@@ -1,4 +1,4 @@
-../legacy-tl-newgen
+Legacy-TL-NewGen @ git+https://github.com/ziwupa/legacytl@beta
 meval==2.5
 Jinja2==3.0.3
 requests==2.27.1
