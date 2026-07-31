@@ -1,0 +1,36 @@
+[tool.black]
+extend-exclude = "loaded_modules"
+preview = true
+
+[tool.poetry]
+name = "legacy-newgen"
+version = "1.0.0"
+description = "Telegram userbot focused on developer convenience"
+authors = ["Legacy contributors", "ziwupa, t.me/ziwupa"]
+license = "GNU AGPLv3"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+Legacy-TL-NewGen = {path = "../legacy-tl-newgen"}
+meval = "2.5"
+Jinja2 = "3.0.3"
+requests = "2.27.1"
+aiohttp_jinja2 = "1.6"
+aiofile = "3.9.0"
+aiogram = "3.22.0"
+grapheme = "0.6.0"
+emoji = "2.1.0"
+werkzeug = "2.2.2"
+psutil = "6.0.0"
+"ruamel.yaml" = "0.17.21"
+aiopsutil = "0.1.0"
+GitPython = "3.1.44"
+whoosh = "2.7.4"
+distro = "1.9.0"
+uvloop = "0.21.0"
+ujson = "5.11.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
