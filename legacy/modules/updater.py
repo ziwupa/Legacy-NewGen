@@ -145,9 +145,11 @@ class UpdaterMod(loader.Module):
             repo = Repo.init(os.path.dirname(utils.get_base_dir()))
             origin = repo.create_remote("origin", self.config["GIT_ORIGIN_URL"])
             origin.fetch()
-            repo.create_head("master", origin.refs.master)
-            repo.heads.master.set_tracking_branch(origin.refs.master)
-            repo.heads.master.checkout(True)
+            repo.create_head(version.branch, origin.refs[version.branch])
+            repo.heads[version.branch].set_tracking_branch(
+                origin.refs[version.branch]
+            )
+            repo.heads[version.branch].checkout(True)
             return False
 
     @staticmethod
