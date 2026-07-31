@@ -85,9 +85,9 @@ BASE_DIR = (
 )
 
 BASE_PATH = Path(BASE_DIR)
-ASSETS_PATH = "https://raw.githubusercontent.com/ziwupa/Legacy-NewGen/refs/heads/dev/assets/legacy-assets.png"
-BACKUPS_PATH = "https://raw.githubusercontent.com/ziwupa/Legacy-NewGen/refs/heads/dev/assets/legacy-backups.png"
-LOGS_PATH = "https://raw.githubusercontent.com/ziwupa/Legacy-NewGen/refs/heads/dev/assets/legacy-logs.png"
+ASSETS_PATH = "https://raw.githubusercontent.com/ziwupa/Legacy-NewGen/refs/heads/beta/assets/legacy-assets.png"
+BACKUPS_PATH = "https://raw.githubusercontent.com/ziwupa/Legacy-NewGen/refs/heads/beta/assets/legacy-backups.png"
+LOGS_PATH = "https://raw.githubusercontent.com/ziwupa/Legacy-NewGen/refs/heads/beta/assets/legacy-logs.png"
 AVATAR_PATH = os.path.join(os.getcwd(), "assets", "legacy-pfp.png")
 CONFIG_PATH = BASE_PATH / "config.json"
 SESSIONS_DIR = os.path.join(BASE_DIR, "sessions")
