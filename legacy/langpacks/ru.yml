@@ -387,6 +387,28 @@ updater:
   rollback_err: "<emoji document_id=5465665476971471368>❌</emoji> <b>Не удалось сделать откат</b>"
   _cmd_doc_rollback: "Откат до указанного коммита [hexsha]"
 
+legacy_lastupdate:
+  checking: "<emoji document_id=5328274090262275771>🕗</emoji> <b>Читаю ветку...</b>"
+  result: "<emoji document_id=5172453033245672405>🌱</emoji> <b>Ветка:</b> <code>{branch}</code>\n\n<emoji document_id=5123230779593196220>⏰</emoji> <b>Последнее обновление:</b> {when}\n<b>Дата:</b> <i>{date}</i>\n<b>Коммит:</b> {commit} <i>{summary}</i>\n<b>Автор:</b> <i>{author}</i>\n\n{status}"
+  up_to_date: "<emoji document_id=5408909562919007848>✅</emoji> <b>Это самый свежий коммит ветки</b>"
+  behind: "<emoji document_id=5292226786229236118>🔄</emoji> <b>Ждут обновления: {count}</b>\n<b>Самое свежее:</b> {when} <i>({date})</i>\n\n{commits}\n\n<i>Забрать их можно командой</i> <code>{prefix}update</code>"
+  more: "<i>...и ещё {}</i>"
+  no_remote: "<emoji document_id=5220053623211305785>❓</emoji> <b>Не удалось прочитать <code>origin/{}</code>, так что сравнивать не с чем</b>"
+  stale: "\n\n<i>origin недоступен, так что сравнение может быть устаревшим</i>"
+  error: "<emoji document_id=5210952531676504517>🚫</emoji> <b>Не удалось прочитать репозиторий:</b> <code>{}</code>"
+  btn_refresh: "🔄 Обновить"
+  btn_commit: "🌙 Коммит"
+  btn_close: "🚫 Закрыть"
+  just_now: "<b>только что</b>"
+  ago: "<b>{} назад</b>"
+  unit_d: "{} д"
+  unit_h: "{} ч"
+  unit_m: "{} мин"
+  unit_s: "{} с"
+  _cfg_doc_fetch: "Обновлять данные с origin перед сравнением. Отключи, если у машины нет доступа в сеть"
+  _cmd_doc_lastupdate: "Показывает, когда в последний раз обновлялась твоя ветка"
+  _cls_doc: "Рассказывает, когда в последний раз обновлялась твоя ветка"
+
 api_protection:
   warning: "⚠️ <b>ВНИМАНИЕ!</b>\n\nАккаунт вышел за лимиты запросов, указанные в конфиге. С целью предотвращения флуда Telegram API, юзербот был <b>полностью заморожен</b> на {} секунд. Дополнительная информация прикреплена в файле ниже. \n\nРекомендуется обратиться за помощью в <code>{prefix}support</code> группу!\n\nЕсли ты считаешь, что это запланированное поведение юзербота, просто подожди, пока закончится таймер и в следующий раз, когда запланируешь выполнять такую ресурсозатратную операцию, используй <code>{prefix}suspend_api_protect</code> &lt;время в секундах&gt;"
   args_invalid: "<emoji document_id=5210952531676504517>🚫</emoji> <b>Неверные аргументы</b>"

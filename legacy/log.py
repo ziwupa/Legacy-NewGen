@@ -9,6 +9,7 @@
 
 import asyncio
 import contextlib
+import importlib.util
 import inspect
 import io
 import linecache
@@ -54,6 +55,8 @@ def getlines(filename: str, module_globals=None) -> str:
 
 
 linecache.getlines = getlines
+
+logger = logging.getLogger(__name__)
 
 
 def override_text(exception: Exception) -> typing.Optional[str]:
@@ -201,6 +204,217 @@ class LegacyException:
         )
 
 
+# The name a library is imported by and the name it is published on PyPI under
+# are two different things. Handing pip the import name silently installs a
+# squatted package of that name (`pytgcalls` 2.1.0, `google` 3.0.0) or nothing
+# at all, which is why the install button used to report success and change
+# nothing. Only names which really differ belong here
+PIP_ALIASES = {
+    "PIL": "pillow",
+    "attr": "attrs",
+    "bs4": "beautifulsoup4",
+    "cv2": "opencv-python-headless",
+    "dateutil": "python-dateutil",
+    "docx": "python-docx",
+    "dotenv": "python-dotenv",
+    "fake_useragent": "fake-useragent",
+    "git": "GitPython",
+    "gtts": "gTTS",
+    "magic": "python-magic",
+    "markdown_it": "markdown-it-py",
+    "mpl_toolkits": "matplotlib",
+    "nacl": "PyNaCl",
+    "OpenSSL": "pyOpenSSL",
+    "pptx": "python-pptx",
+    "pymorphy3": "pymorphy3",
+    "pytgcalls": "py-tgcalls",
+    "serial": "pyserial",
+    "skimage": "scikit-image",
+    "sklearn": "scikit-learn",
+    "socks": "PySocks",
+    "speech_recognition": "SpeechRecognition",
+    "telethon": "",  # served by legacytl, must never be installed
+    "tgcalls": "py-tgcalls",
+    "usb": "pyusb",
+    "yaml": "PyYAML",
+    "zoneinfo": "backports.zoneinfo",
+}
+
+# Imports which are a part of a userbot rather than a PyPI package. `heroku`,
+# `hikka` and friends are rewritten onto `legacy` by `patched_import`, so a
+# failure on one of these is a bug in a module, not a missing dependency
+NEVER_INSTALL = frozenset({
+    "legacy",
+    "legacytl",
+    "heroku",
+    "herokutl",
+    "hikka",
+    "hikkatl",
+    "telethon",
+})
+
+
+# Some wheels are tens of megabytes, so pip is given room to work — but not
+# forever, otherwise a hung resolver leaves the button spinning for good
+PIP_TIMEOUT = 600
+
+
+def _normalize_dist_name(name: str) -> str:
+    """Brings a distribution name to the form PyPI compares by (PEP 503)"""
+    return re.sub(r"[-_.]+", "-", name).strip().lower()
+
+
+def _requirement_name(requirement: str) -> str:
+    """
+    The bare distribution name of a `# requires:` entry, without extras, version
+    specifiers or markers. A URL requirement has no name to speak of and comes
+    out as something which matches nothing, which is exactly what we want
+    """
+    return _normalize_dist_name(re.split(r"[<>=!~;\[\s]", requirement, 1)[0])
+
+
+def _importable(lib: str) -> bool:
+    """Whether `lib` can be imported right now"""
+    importlib.invalidate_caches()
+
+    # `find_spec` of a dotted name imports every parent package of it, so this
+    # runs third party code and may raise absolutely anything
+    with contextlib.suppress(BaseException):
+        return importlib.util.find_spec(lib) is not None
+
+    return False
+
+
+def _pip_report(output: str, limit: int = 12) -> str:
+    """The tail of pip's output, trimmed to something a message can hold"""
+    lines = [line.rstrip() for line in output.splitlines() if line.strip()]
+    return utils.escape_html("\n".join(lines[-limit:])) or "no output"
+
+
+def _pip_installed(output: str) -> str:
+    """
+    What pip says it actually did. `Successfully installed` names the versions
+    which ended up on disk, which is the only trustworthy account of the run —
+    the exit code says nothing about *which* distribution took the name
+    """
+    for line in reversed(output.splitlines()):
+        line = line.strip()
+
+        if line.startswith("Successfully installed "):
+            return utils.escape_html(line[len("Successfully installed ") :])
+
+        if line.startswith("Requirement already satisfied"):
+            return "nothing, it was already there"
+
+    return ""
+
+
+def _pip_conflicts(output: str) -> typing.List[str]:
+    """
+    The dependency conflicts pip prints *after* a successful install. pip
+    happily replaces a pinned version another library needs and still exits 0,
+    so these lines are the difference between a working install and a broken
+    userbot — they have to reach the user
+    """
+    conflicts = []
+    collecting = False
+
+    for line in output.splitlines():
+        line = line.strip()
+
+        if line.startswith("ERROR: pip's dependency resolver"):
+            collecting = True
+            continue
+
+        if not collecting:
+            continue
+
+        # The block runs until the summary line or the end of the output
+        if not line or line.startswith("Successfully installed"):
+            break
+
+        conflicts.append(utils.escape_html(line))
+
+    return conflicts
+
+
+def pip_name_of(lib: str) -> typing.Optional[str]:
+    """
+    Guesses the PyPI name of an import. `None` means the import cannot come
+    from PyPI at all
+    """
+    root = lib.split(".", 1)[0]
+
+    if root in NEVER_INSTALL:
+        return None
+
+    if root in PIP_ALIASES:
+        return PIP_ALIASES[root] or None
+
+    return root
+
+
+def lib_of_message(message: str) -> typing.Optional[str]:
+    """
+    The import which a log message is complaining about, if it is complaining
+    about one at all. `override_text` has already reduced the traceback to the
+    quoted module name by the time this runs
+    """
+    if "No module named" not in message:
+        return None
+
+    match = re.search(r"'([^']+)'", message)
+
+    return match[1] if match else None
+
+
+def requirements_of_module(tb: typing.Optional[traceback.TracebackException]) -> list:
+    """
+    Digs the `# requires:` header out of the module which failed to import.
+    The module itself knows the real names of its dependencies, so its own
+    header is a far better source than any guess made from the import name
+    """
+    # `loader` sits in an import cycle with `main` and `dispatcher`, so it is
+    # taken out of `sys.modules` rather than imported: a traceback belonging to
+    # a module can only exist once the loader which ran it is up, which means it
+    # is always there by the time this is reached
+    loader = sys.modules.get(f"{__package__}.loader")
+
+    if tb is None or loader is None:
+        return []
+
+    source = None
+    prefix = f"{__package__}.{loader.MODULES_NAME}."
+
+    # The deepest frame belonging to a module is the one which ran the import
+    while tb is not None:
+        frame = tb.tb_frame
+        name = frame.f_globals.get("__name__") or ""
+
+        if name.startswith(prefix):
+            loader_ = frame.f_globals.get("__loader__")
+
+            with contextlib.suppress(Exception):
+                if hasattr(loader_, "get_source"):
+                    source = loader_.get_source(name)
+
+        tb = tb.tb_next
+
+    if not source:
+        return []
+
+    match = loader.VALID_PIP_PACKAGES.search(source)
+
+    if not match:
+        return []
+
+    return [
+        requirement
+        for requirement in map(str.strip, match[1].split())
+        if requirement and not requirement.startswith(("-", "_", "."))
+    ]
+
+
 class TelegramLogsHandler(logging.Handler):
     """
     Keeps 2 buffers.
@@ -260,45 +474,214 @@ class TelegramLogsHandler(logging.Handler):
             and (not record.legacy_caller or client_id == record.legacy_caller)
         ]
 
-    async def _install_pylib(self, call: BotInlineCall, bot: "aiogram.Bot", lib: str):
-        if lib == "PIL":
-            lib = "pillow"
+    def _log_markup(
+        self,
+        bot: "aiogram.Bot",  # type: ignore  # noqa: F821
+        item: LegacyException,
+        lib: typing.Optional[str] = None,
+    ) -> list:
+        """
+        The buttons of a log message. An edit which does not pass the markup
+        again silently drops the buttons, so every edit rebuilds them from here
+        """
+        buttons = [
+            {
+                "text": "🌙 Full traceback",
+                "callback": self._show_full_trace,
+                "args": (bot, item),
+                "disable_security": True,
+            },
+        ]
+
+        # No button for imports which cannot come from PyPI — offering to
+        # install `legacy` or `telethon` only invites breaking the venv
+        if lib and pip_name_of(lib):
+            buttons.append(
+                {
+                    "text": "⬇️ Install",
+                    "callback": self._install_pylib,
+                    "args": (bot, item, lib),
+                }
+            )
+
+        return buttons
+
+    async def _install_pylib(
+        self,
+        call: BotInlineCall,
+        bot: "aiogram.Bot",  # type: ignore  # noqa: F821
+        item: LegacyException,
+        lib: str,
+    ):
+        # The `# requires:` header of the module which failed is authoritative:
+        # it carries the real PyPI names, extras and pins its author intended.
+        # The import name is only a fallback for modules without a header
+        requirements = requirements_of_module(
+            item.sysinfo[2] if item.sysinfo else None
+        )
+
+        guess = pip_name_of(lib)
+
+        if guess and not any(
+            _requirement_name(requirement) == _normalize_dist_name(guess)
+            for requirement in requirements
+        ):
+            requirements.append(guess)
+
+        if not requirements:
+            return await call.answer(
+                f"🚫 {lib} is not a PyPI package — this is a bug in the module,"
+                " not a missing dependency",
+                show_alert=True,
+            )
+
+        await call.answer(f"⏳ Installing {', '.join(requirements)}...")
+
+        with contextlib.suppress(Exception):
+            await call.edit(
+                f"{item.message}\n\n⏳ <b>Installing"
+                f" <code>{utils.escape_html(' '.join(requirements))}</code>...</b>",
+                reply_markup=self._log_markup(bot, item),
+            )
 
         try:
-            process = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "--upgrade",
-                "-q",
-                "--disable-pip-version-check",
-                "--no-warn-script-location",
+            output, returncode = await self._run_pip(requirements)
+        except asyncio.TimeoutError:
+            await call.answer("🚫 pip timed out", show_alert=True)
+            await self._install_failed(
+                call,
+                bot,
+                item,
                 lib,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                requirements,
+                f"pip did not finish in {PIP_TIMEOUT} seconds",
             )
-
-            stdout, stderr = await process.communicate()
-
-            if process.returncode == 0:
-                return await call.answer(
-                    f"✅ <b>Library {lib} installed successfully!</b>"
-                )
-            else:
-                error_msg = stderr.decode().strip() if stderr else "Unknown error"
-                await bot.send_message(
-                    chat_id=call.chat_id,
-                    text=f"❌ <b>Failed to install <code>{lib}</code>:</b>\n<code>{error_msg}</code>",
-                )
-                return await call.answer()
-
+            return
         except Exception as e:
-            await bot.send_message(
-                chat_id=call.chat_id,
-                text=f"❌ <b>Exception during installation of <code>{lib}</code>:</b>\n<code>{str(e)}<code>",
+            logger.exception("Unable to run pip for %s", requirements)
+            await call.answer("🚫 Unable to run pip", show_alert=True)
+            await self._install_failed(
+                call,
+                bot,
+                item,
+                lib,
+                requirements,
+                f"{type(e).__name__}: {e}",
             )
-            return await call.answer()
+            return
+
+        if returncode != 0:
+            await call.answer("🚫 pip failed", show_alert=True)
+            await self._install_failed(
+                call, bot, item, lib, requirements, _pip_report(output)
+            )
+            return
+
+        # pip exiting 0 is not evidence of anything. A squatted package of the
+        # same name installs cleanly and leaves the import just as missing, so
+        # the only real check is whether the import works now
+        if not await utils.run_sync(_importable, lib):
+            await call.answer("🚫 Installed, but the import still fails", show_alert=True)
+            await self._install_failed(
+                call,
+                bot,
+                item,
+                lib,
+                requirements,
+                (
+                    f"pip reports success, but <code>{utils.escape_html(lib)}</code>"
+                    " still cannot be imported. The name on PyPI most likely belongs"
+                    " to a different project than the one this module needs.\n\npip"
+                    f" installed: {_pip_installed(output) or 'nothing'}"
+                ),
+            )
+            return
+
+        text = (
+            f"{item.message}\n\n✅ <b>Installed"
+            f" <code>{utils.escape_html(' '.join(requirements))}</code></b>\n<i>Restart"
+            " Legacy to load the module</i>"
+        )
+
+        if installed := _pip_installed(output):
+            text += f"\n\n<b>pip installed:</b> <code>{installed}</code>"
+
+        if conflicts := _pip_conflicts(output):
+            text += (
+                "\n\n⚠️ <b>pip broke the versions other libraries pinned:</b>\n<code>"
+                + "\n".join(conflicts)
+                + "</code>"
+            )
+
+        await call.answer("✅ Installed")
+
+        with contextlib.suppress(Exception):
+            # The Install button is gone from the markup: the library is there
+            # and pressing it again would only churn the environment
+            await call.edit(text, reply_markup=self._log_markup(bot, item))
+
+    @staticmethod
+    async def _run_pip(requirements: typing.List[str]) -> typing.Tuple[str, int]:
+        """
+        Runs pip for `requirements` and returns everything it said together with
+        its exit code. `-q` is deliberately absent: the output is the evidence
+        """
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--no-warn-script-location",
+            *requirements,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+
+        try:
+            stdout, _ = await asyncio.wait_for(
+                process.communicate(), timeout=PIP_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            with contextlib.suppress(ProcessLookupError):
+                process.kill()
+
+            with contextlib.suppress(Exception):
+                await process.wait()
+
+            raise
+
+        return stdout.decode("utf-8", "replace"), process.returncode
+
+    async def _install_failed(
+        self,
+        call: BotInlineCall,
+        bot: "aiogram.Bot",  # type: ignore  # noqa: F821
+        item: LegacyException,
+        lib: str,
+        requirements: typing.List[str],
+        reason: str,
+    ):
+        """
+        Reports a failed install in place of the log message, keeping the button
+        so it can be pressed again once the cause is dealt with
+        """
+        text = (
+            f"{item.message}\n\n🚫 <b>Unable to install"
+            f" <code>{utils.escape_html(' '.join(requirements))}</code></b>\n"
+            f"<code>{reason}</code>"
+        )
+
+        for chunk in utils.smart_split(*legacytl.extensions.html.parse(text), 4096):
+            text = chunk
+            break
+
+        with contextlib.suppress(Exception):
+            await call.edit(text, reply_markup=self._log_markup(bot, item, lib))
+            return
+
+        with contextlib.suppress(Exception):
+            await bot.send_message(chat_id=call.chat_id, text=text)
 
     async def _show_full_trace(
         self,
@@ -310,8 +693,11 @@ class TelegramLogsHandler(logging.Handler):
 
         chunks = list(utils.smart_split(*legacytl.extensions.html.parse(chunks), 4096))
 
+        # The markup has to be passed again, otherwise reading the traceback
+        # throws away the Install button along with it
         await call.edit(
             chunks[0],
+            reply_markup=self._log_markup(bot, item, lib_of_message(item.message)),
         )
 
         for chunk in chunks[1:]:
@@ -350,33 +736,17 @@ class TelegramLogsHandler(logging.Handler):
                     if isinstance(item[0], LegacyException) and (
                         not item[1] or item[1] == client_id or self.force_send_all
                     ):
-                        reply_markup_btns = [
-                            {
-                                "text": "🌙 Full traceback",
-                                "callback": self._show_full_trace,
-                                "args": (
-                                    self._mods[client_id].inline.bot,
-                                    item[0],
-                                ),
-                                "disable_security": True,
-                            },
-                        ]
-                        if "No module named" in item[0].message:
-                            match = re.search(r"'([^']+)'", item[0].message)
-                            if match:
-                                lib = match.group(1)
-                                reply_markup_btns.append(
-                                    {
-                                        "text": "⬇️ Install",
-                                        "callback": self._install_pylib,
-                                        "args": (self._mods[client_id].inline.bot, lib),
-                                    }
-                                )
+                        lib = lib_of_message(item[0].message)
+
                         await self._mods[client_id].inline.bot.send_message(
                             self._mods[client_id].logchat,
                             item[0].message,
                             reply_markup=self._mods[client_id].inline.generate_markup(
-                                reply_markup_btns
+                                self._log_markup(
+                                    self._mods[client_id].inline.bot,
+                                    item[0],
+                                    lib,
+                                )
                             ),
                             message_thread_id=self._mods[client_id]._logs_topic.id,
                         )
