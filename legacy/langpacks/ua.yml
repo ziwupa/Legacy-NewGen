@@ -199,6 +199,21 @@ legacy_backup:
   _cmd_doc_restore: "Відновити резервну копію з файлу"
   _cmd_doc_set_backup_period: "<час в годинах> - Встановити частоту бекапів"
 
+legacy_migrate:
+  searching: "<emoji document_id=5443038326535759644>🔍</emoji> <b>Шукаю інші юзерботи на цій машині...</b>"
+  installation: "<b>{title}</b>\n<emoji document_id=5431736674147114227>🗂</emoji> <code>{path}</code>\n<emoji document_id=5197474765387864959>👍</emoji> <b>Модулів:</b> {modules}\n<emoji document_id=5382187118216879236>❓</emoji> <b>Акаунт:</b> <code>{id}</code>"
+  nothing_found: "<emoji document_id=5210952531676504517>🚫</emoji> <b>Інших юзерботів на цій машині не знайдено</b>\n\n<i>Якщо він встановлений у нестандартному місці, вкажи папку:</i> <code>{}migrate /шлях/до/юзербота</code>"
+  found: "<emoji document_id=5443038326535759644>🔍</emoji> <b>Знайдено кілька установок:</b>\n\n{}\n\n<i>Обери, з якої переносити:</i> <code>{}migrate &lt;шлях&gt;</code>"
+  not_an_installation: "<emoji document_id=5210952531676504517>🚫</emoji> <b>У</b> <code>{}</code> <b>немає установки Hikka, Heroku або Legacy</b>"
+  confirm: "<emoji document_id=5774134533590880843>🔄</emoji> <b>Перенести з цієї установки?</b>\n\n{}\n\n<i>Твоя база і модулі будуть замінені на її. Канал контенту та inline бот цієї установки збережуться.</i>"
+  btn_migrate: "🔄 Перенести"
+  btn_cancel: "❌ Скасувати"
+  migrating: "<emoji document_id=5774134533590880843>🔄</emoji> <b>Переношу...</b>"
+  migrated: "<emoji document_id=5314250708508220914>✅</emoji> <b>Перенесено з {title}, модулів переміщено: {modules}. Перезапускаюсь...</b>"
+  failed: "<emoji document_id=5210952531676504517>🚫</emoji> <b>Перенесення не вдалося:</b> <code>{}</code>"
+  _cls_doc: "Переносить установки Hikka, Heroku та Legacy на цю"
+  _cmd_doc_migrate: "[шлях] - Перенести інший юзербот з цієї машини на Legacy. Без аргументів шукає сам"
+
 settings:
   choose_installation: "🌙 <b>Виберіть варіант встановлення Legacy:</b>"
   vds: "💎 VDS"

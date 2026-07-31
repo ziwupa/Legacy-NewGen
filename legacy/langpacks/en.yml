@@ -211,6 +211,22 @@ legacy_backup:
   _btn_yes: "✅ Yes"
   _btn_no: "❌ No"
 
+legacy_migrate:
+  name: "LegacyMigrate"
+  searching: "<emoji document_id=5443038326535759644>🔍</emoji> <b>Looking for other userbots on this machine...</b>"
+  installation: "<b>{title}</b>\n<emoji document_id=5431736674147114227>🗂</emoji> <code>{path}</code>\n<emoji document_id=5197474765387864959>👍</emoji> <b>Modules:</b> {modules}\n<emoji document_id=5382187118216879236>❓</emoji> <b>Account:</b> <code>{id}</code>"
+  nothing_found: "<emoji document_id=5210952531676504517>🚫</emoji> <b>No other userbots found on this machine</b>\n\n<i>If it is installed somewhere unusual, point at its directory:</i> <code>{}migrate /path/to/userbot</code>"
+  found: "<emoji document_id=5443038326535759644>🔍</emoji> <b>Found several installations:</b>\n\n{}\n\n<i>Pick the one to migrate from:</i> <code>{}migrate &lt;path&gt;</code>"
+  not_an_installation: "<emoji document_id=5210952531676504517>🚫</emoji> <b>There is no Hikka, Heroku or Legacy installation in</b> <code>{}</code>"
+  confirm: "<emoji document_id=5774134533590880843>🔄</emoji> <b>Migrate from this installation?</b>\n\n{}\n\n<i>Your database and modules will be replaced by its ones. The content channel and the inline bot of this installation are kept.</i>"
+  btn_migrate: "🔄 Migrate"
+  btn_cancel: "❌ Cancel"
+  migrating: "<emoji document_id=5774134533590880843>🔄</emoji> <b>Migrating...</b>"
+  migrated: "<emoji document_id=5314250708508220914>✅</emoji> <b>Migrated from {title}, {modules} module(s) moved. Restarting...</b>"
+  failed: "<emoji document_id=5210952531676504517>🚫</emoji> <b>Migration failed:</b> <code>{}</code>"
+  _cls_doc: "Migrates Hikka, Heroku and Legacy installations to this one"
+  _cmd_doc_migrate: "[path] - Migrate another userbot on this machine to Legacy. Without arguments searches for one"
+
 settings:
   name: "Settings"
   choose_installation: "🌙 <b>Choose your Legacy installation option:</b>"
