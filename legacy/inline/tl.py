@@ -42,29 +42,6 @@ class TelethonBot:
     def __getattr__(self, item: str):
         return getattr(self.client, item)
 
-    async def _resolve_peer(self, chat_id):
-        """
-        Resolves `chat_id` into something the bot client can send to.
-
-        The bot only learns a channel's `access_hash` from updates it has
-        actually received, so a channel the userbot created moments earlier is
-        unknown to it. `get_input_entity` then falls back to
-        `channels.GetChannels` with `access_hash=0`, which raises
-        `ChannelInvalidError` and surfaces as "Could not find the input entity".
-
-        The userbot client is a member and does know the hash, so resolve
-        through it and hand the bot a complete `InputPeerChannel`.
-        """
-        try:
-            return await self.client.get_input_entity(chat_id)
-        except (ValueError, TypeError):
-            if self._emoji_client is self.client:
-                raise
-
-        # Raises in turn if the userbot cannot resolve it either, which is a
-        # genuine error rather than a missing access_hash
-        return await self._emoji_client.get_input_entity(chat_id)
-
     # Telegram (and legacytl's `is_image`) decides how to treat an upload by
     # looking at its filename, so a nameless `BytesIO` is always sent as a
     # document. Sniffing the payload gives it a meaningful extension
@@ -263,7 +240,7 @@ class TelethonBot:
     ):
         return self._with_message_id_alias(
             await self.client.send_message(
-                await self._resolve_peer(chat_id),
+                chat_id,
                 self._emoji_text(text),
                 parse_mode="HTML",
                 buttons=reply_markup,
@@ -289,7 +266,7 @@ class TelethonBot:
     ):
         return self._with_message_id_alias(
             await self.client.send_file(
-                await self._resolve_peer(chat_id),
+                chat_id,
                 self._normalise_file(document),
                 caption=self._emoji_text(caption),
                 parse_mode="HTML",
@@ -312,7 +289,7 @@ class TelethonBot:
     ):
         return self._with_message_id_alias(
             await self.client.send_file(
-                await self._resolve_peer(chat_id),
+                chat_id,
                 self._normalise_photo(photo),
                 caption=self._emoji_text(caption),
                 parse_mode="HTML",
@@ -345,7 +322,7 @@ class TelethonBot:
         ]
         return self._with_message_id_alias(
             await self.client.send_file(
-                await self._resolve_peer(chat_id),
+                chat_id,
                 self._normalise_file(audio),
                 attributes=attributes,
                 thumb=(
@@ -369,7 +346,7 @@ class TelethonBot:
     ):
         return self._with_message_id_alias(
             await self.client.send_file(
-                await self._resolve_peer(chat_id),
+                chat_id,
                 self._normalise_file(animation),
                 caption=self._emoji_text(caption),
                 parse_mode="HTML",
@@ -384,15 +361,10 @@ class TelethonBot:
         if "caption" in kwargs:
             kwargs["caption"] = self._emoji_text(kwargs["caption"])
 
-        if args:
-            args = (await self._resolve_peer(args[0]), *args[1:])
-
         return await self.client.send_file(*args, **kwargs)
 
     async def delete_message(self, chat_id, message_id):
-        return await self.client.delete_messages(
-            await self._resolve_peer(chat_id), message_id
-        )
+        return await self.client.delete_messages(chat_id, message_id)
 
     async def answer_inline_query(
         self,
@@ -444,7 +416,7 @@ class TelethonBot:
             )
 
         return await self.client.edit_message(
-            await self._resolve_peer(chat_id),
+            chat_id,
             message_id,
             file=media,
             buttons=reply_markup,
@@ -475,7 +447,7 @@ class TelethonBot:
             )
 
         return await self.client.edit_message(
-            await self._resolve_peer(chat_id),
+            chat_id,
             message_id,
             text,
             parse_mode="HTML",
@@ -503,7 +475,7 @@ class TelethonBot:
             )
 
         return await self.client.edit_message(
-            await self._resolve_peer(chat_id),
+            chat_id,
             message_id,
             buttons=markup,
         )

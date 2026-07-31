@@ -988,7 +988,23 @@ async def asset_forum_topic(
 
     if not isinstance(entity, Channel):
         raise TypeError(f"Expected entity to be 'Channel', but got '{type(entity).__name__}'")
-    
+
+    # The bot has to be a member before it can post here, and it only learns the
+    # channel's access_hash from the update it receives when added — without that
+    # every send raises "Could not find the input entity for PeerChannel".
+    #
+    # This has to run even when the topic is already cached below: a channel
+    # carried over from hikka/heroku or restored from someone else's backup was
+    # shared with a *different* inline bot than the one this session uses.
+    if invite_bot:
+        await fw_protect()
+        if all(
+            p.id != client.loader.inline.bot_id
+            for p in await client.get_participants(entity, limit=100)
+        ):
+            await fw_protect()
+            await invite_inline_bot(client, entity)
+
     async def create_topic() -> ForumTopic:
         result = await client(CreateForumTopicRequest(
             peer=entity,
@@ -1034,17 +1050,6 @@ async def asset_forum_topic(
         forums_cache.setdefault(cache_key, {})[title] = new_topic.id
     
     db.set("legacy.forums", "forums_cache", forums_cache)
-
-    if invite_bot:
-        await fw_protect()
-        if all(
-            p.id != client.loader.inline.bot_id
-            for p in await client.get_participants(
-                entity, limit=20
-            )
-        ):
-            await fw_protect()
-            await invite_inline_bot(client, entity)
 
     return new_topic
 
