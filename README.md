@@ -240,4 +240,5 @@ Create an application at <a href="https://my.telegram.org/apps">my.telegram.org/
     <li><a href="https://t.me/GunyaKshin">Codwiz</a> for Ukrainian translation pack</li>
     <li><a href="https://t.me/Admt_450">ɴᴇᴛ『s』ᴛᴀʟᴋ『2』『4』</a> for testing, finding bugs and Ukrainian translation</li>
     <li><a href="https://t.me/lonami">Lonami</a> for Telethon, which is the base of Legacy-TL-New</li>
+    <li><a href="https://github.com/ziwupa">zet</a> for maintaining Legacy NewGen, the inline library installer and the update tracker</li>
 </ul>
