@@ -8,10 +8,10 @@
 
 # Do not delete this file, it will cause errors.
 
-__author__ = "Legacy contributors"
+__author__ = "Legacy NewGen contributors"
 __contact__ = "https://t.me/ziwupa"
-__copyright__ = "Copyright Legacy contributors"
-__credits__ = ["LonamiWebs", "penn5", "coddrago", "ziwupa"]
+__copyright__ = "Copyright Legacy NewGen contributors"
+__credits__ = ["LonamiWebs", "penn5", "ziwupa"]
 __license__ = "AGPLv3"
 __maintainer__ = "@ziwupa"
 __status__ = "Production"

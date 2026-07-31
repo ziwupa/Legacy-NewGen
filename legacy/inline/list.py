@@ -4,9 +4,9 @@
 # You can redistribute it and/or modify it under the terms of the GNU AGPLv3
 # 🔑 https://www.gnu.org/licenses/agpl-3.0.html
 
-# ©️ Codrago, 2024-2030
-# This file is a part of Legacy newgen Userbot
-# 🌐 https://github.com/coddrago/Legacy newgen
+# ©️ ziwupa, 2026
+# This file is a part of Legacy NewGen Userbot
+# 🌐 https://github.com/ziwupa/Legacy-NewGen
 # You can redistribute it and/or modify it under the terms of the GNU AGPLv3
 # 🔑 https://www.gnu.org/licenses/agpl-3.0.html
 
