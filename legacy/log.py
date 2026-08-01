@@ -415,6 +415,49 @@ def requirements_of_module(tb: typing.Optional[traceback.TracebackException]) ->
     ]
 
 
+# At INFO `legacytl` also reports every file download, every update difference
+# and every entity cache flush, so its records below WARNING are dropped. These
+# are the exception: they say whether a closed connection was picked back up,
+# which is what makes the closures themselves readable instead of alarming
+_LEGACYTL_LIFECYCLE = (
+    "Server closed the connection: %s",
+    "The server closed the connection while sending",
+    "Connection closed while receiving data: %s",
+    "Connection closed while sending data",
+    "Closing current connection to begin reconnect...",
+    "Connecting to %s...",
+    "Connection to %s complete!",
+    "Failed reconnection attempt %d with %s",
+    "Asking for the current state after reconnect...",
+    "Successfully fetched missed updates",
+    "Reconnecting to new data center %s",
+    "Server does not know about the current auth key; the session may need to be recreated",
+)
+
+
+class LegacytlLifecycleFilter(logging.Filter):
+    """
+    Lets the connection lifecycle of `legacytl` through the level it is muted at
+
+    Belongs on the handler rather than on the `legacytl` logger: a logger checks
+    its own level before anything else, so muting it there would drop these
+    records before a filter ever saw them, and a filter of a parent logger is
+    not consulted for the records of its children anyway
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # The match is on a whole logger name, never on a prefix of one. The
+        # names themselves are doubled up — `legacytl.legacytl.network...` —
+        # because the library passes its children their own `__name__`
+        return (
+            record.levelno >= logging.WARNING
+            or not (
+                record.name == "legacytl" or record.name.startswith("legacytl.")
+            )
+            or record.msg in _LEGACYTL_LIFECYCLE
+        )
+
+
 class TelegramLogsHandler(logging.Handler):
     """
     Keeps 2 buffers.
@@ -886,12 +929,13 @@ def init():
     handler = logging.StreamHandler()
     handler.setLevel(logging.INFO)
     handler.setFormatter(_main_formatter)
+    telegram_handler = TelegramLogsHandler((handler, rotating_handler), 7000)
+    telegram_handler.addFilter(LegacytlLifecycleFilter())
     logging.getLogger().handlers = []
-    logging.getLogger().addHandler(
-        TelegramLogsHandler((handler, rotating_handler), 7000)
-    )
+    logging.getLogger().addHandler(telegram_handler)
     logging.getLogger().setLevel(logging.NOTSET)
-    logging.getLogger("legacytl").setLevel(logging.WARNING)
+    # Not muted outright, `LegacytlLifecycleFilter` sorts its records out
+    logging.getLogger("legacytl").setLevel(logging.INFO)
     logging.getLogger("matplotlib").setLevel(logging.WARNING)
     logging.getLogger("aiohttp").setLevel(logging.WARNING)
     logging.getLogger("aiogram").setLevel(logging.WARNING)

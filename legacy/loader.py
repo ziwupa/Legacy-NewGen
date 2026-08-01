@@ -135,34 +135,55 @@ USER_INSTALL = not (
 
 native_import = builtins.__import__
 
-
-def patched_import(name: str, *args, **kwargs):
-    # Telethon forks of every userbot are aliased onto ours. This has to happen
-    # before the generic rules below, otherwise `hikkatl` would be rewritten
-    # into `legacytl` twice over
-    if name.startswith("hikkatl"):
-        return native_import("legacytl" + name[7:], *args, **kwargs)
-    if name.startswith("herokutl"):
-        return native_import("legacytl" + name[8:], *args, **kwargs)
-    if name.startswith("telethon"):
-        return native_import("legacytl" + name[8:], *args, **kwargs)
-
+# Packages of other userbots aliased onto ours. Matched in order, so the longer
+# names come first: `hikkatl` must not be caught by `hikka` and rewritten into
+# `legacytl` twice over
+_IMPORT_ALIASES = (
+    # Telethon forks of every userbot are ours
+    ("hikkatl", "legacytl"),
+    ("herokutl", "legacytl"),
+    ("telethon", "legacytl"),
     # Voice chat libraries are separate packages, not parts of a userbot, so
     # they keep their own names. `hikkals` used to be renamed into `legacyls`,
     # which is kept working for the modules which rely on it
-    if name.startswith(("hikkals", "hikkalls")):
-        try:
-            return native_import("legacy" + name[5:], *args, **kwargs)
-        except ImportError:
-            return native_import(name, *args, **kwargs)
-
+    ("hikkalls", "legacylls"),
+    ("hikkals", "legacyls"),
     # Everything else of a foreign userbot — `hikka.loader`, `from heroku
     # import loader, utils` and so on — is served by the module of Legacy with
     # the very same name
-    if name.startswith("hikka"):
-        return native_import("legacy" + name[5:], *args, **kwargs)
-    if name.startswith("heroku"):
-        return native_import("legacy" + name[6:], *args, **kwargs)
+    ("hikka", "legacy"),
+    ("heroku", "legacy"),
+)
+
+# Aliases which are not guaranteed to resolve, so a failure falls back to the
+# original name instead of propagating
+_OPTIONAL_ALIASES = frozenset({"hikkals", "hikkalls"})
+
+
+def patched_import(name: str, *args, **kwargs):
+    # Only absolute imports of the packages themselves are rewritten. A relative
+    # import is resolved against the package which issues it, so
+    # `from .telethon_client import ...` inside a third-party library has to be
+    # left alone — rewriting it asks for `pytgcalls.mtproto.legacytl_client`,
+    # which does not exist
+    level = args[3] if len(args) >= 4 else kwargs.get("level", 0)
+
+    if not level:
+        for alias, target in _IMPORT_ALIASES:
+            # The match is on a whole module name, never on a prefix of one:
+            # `telethon_client` is a different module from `telethon`
+            if name != alias and not name.startswith(f"{alias}."):
+                continue
+
+            patched = target + name[len(alias) :]
+
+            if alias in _OPTIONAL_ALIASES:
+                try:
+                    return native_import(patched, *args, **kwargs)
+                except ImportError:
+                    break
+
+            return native_import(patched, *args, **kwargs)
 
     return native_import(name, *args, **kwargs)
 
