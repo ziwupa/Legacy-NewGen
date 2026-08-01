@@ -449,13 +449,19 @@ class LegacytlLifecycleFilter(logging.Filter):
         # The match is on a whole logger name, never on a prefix of one. The
         # names themselves are doubled up — `legacytl.legacytl.network...` —
         # because the library passes its children their own `__name__`
-        return (
-            record.levelno >= logging.WARNING
-            or not (
-                record.name == "legacytl" or record.name.startswith("legacytl.")
-            )
-            or record.msg in _LEGACYTL_LIFECYCLE
-        )
+        if record.levelno >= logging.WARNING or not (
+            record.name == "legacytl" or record.name.startswith("legacytl.")
+        ):
+            return True
+
+        if record.msg not in _LEGACYTL_LIFECYCLE:
+            return False
+
+        # Belongs in the log file, not in the log chat: a reconnect happens
+        # dozens of times an hour on a healthy client, and the chat is there
+        # for what needs a person to look at it
+        record.legacy_no_tg = True
+        return True
 
 
 class TelegramLogsHandler(logging.Handler):
@@ -853,7 +859,9 @@ class TelegramLogsHandler(logging.Handler):
 
         record.legacy_caller = caller
 
-        if record.levelno >= self.tg_level:
+        if record.levelno >= self.tg_level and not getattr(
+            record, "legacy_no_tg", False
+        ):
             if record.exc_info:
                 exc = LegacyException.from_exc_info(
                     *record.exc_info,
