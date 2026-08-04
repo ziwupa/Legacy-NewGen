@@ -9,6 +9,7 @@ import io
 import ujson
 import logging
 import random
+import sys
 import time
 import typing
 
@@ -84,6 +85,18 @@ _CANONICAL_FORBIDDEN = frozenset({
 _WATCHDOG_INTERVAL = 4
 _ALERT_DEBOUNCE = 60
 
+# Symbols that only protection-tampering code has any reason to touch. When the
+# watchdog trips, we scan the source of every externally-loaded module for these
+# to name a likely culprit in the alert instead of just "something".
+_PROTECTION_TOKENS = (
+    "_CORE_FORBIDDEN_CONSTRUCTORS",
+    "_EXTRA_FORBIDDEN_CONSTRUCTORS",
+    "FORBIDDEN_CONSTRUCTORS",
+    "_raise_if_forbidden",
+    "_get_forbid_constructors",
+    "forbid_constructors",
+)
+
 
 @loader.tds
 class APIRatelimiterMod(loader.Module):
@@ -96,6 +109,12 @@ class APIRatelimiterMod(loader.Module):
         self._watchdog_task: typing.Optional[asyncio.Task] = None
         self._watchdog_refs: dict = {}
         self._last_alert = 0
+        # True only if the legacytl in memory already had the hardened frozenset
+        # core when the watchdog captured its baseline. If it was an older core,
+        # the core checks can never pass and _restore can't help — that's a
+        # restart-required version mismatch, not an attack.
+        self._core_hardened_at_capture = None
+        self._stale_core_warned = False
         self.config = loader.ModuleConfig(
             loader.ConfigValue(
                 "time_sample",
@@ -249,6 +268,23 @@ class APIRatelimiterMod(loader.Module):
             "get_forbid": _tlobject._get_forbid_constructors,
             "core": getattr(_tlobject, "_CORE_FORBIDDEN_CONSTRUCTORS", None),
         }
+        # Snapshot the active forbidden set as it stands right now (known-good).
+        # The watchdog trips if it later *shrinks* below this baseline — that
+        # catches a dropped constructor whether the core is new or old, without
+        # demanding ids the running core never had (which would false-positive).
+        try:
+            self._watchdog_refs["active_baseline"] = frozenset(
+                _tlobject._get_forbid_constructors()
+            )
+        except Exception:
+            self._watchdog_refs["active_baseline"] = frozenset()
+        self._core_hardened_at_capture = self._watchdog_refs["core"] is not None
+        if not self._core_hardened_at_capture:
+            logger.warning(
+                "api_protection: legacytl in memory predates the hardened core"
+                " (no _CORE_FORBIDDEN_CONSTRUCTORS) — a restart is required to"
+                " load it; core-set checks are advisory until then"
+            )
         if self._watchdog_task is None or self._watchdog_task.done():
             self._watchdog_task = asyncio.ensure_future(self._watchdog_loop())
 
@@ -256,6 +292,11 @@ class APIRatelimiterMod(loader.Module):
         while True:
             try:
                 await asyncio.sleep(_WATCHDOG_INTERVAL)
+                # An old core in memory is a restart-required version mismatch,
+                # not an attack: say so once, then keep watching only the pieces
+                # that are still meaningful (guard identity, ratelimiter, config).
+                if not self._core_hardened_at_capture:
+                    await self._warn_stale_core_once()
                 problems = self._check_integrity()
                 if problems:
                     self._restore()
@@ -266,8 +307,11 @@ class APIRatelimiterMod(loader.Module):
                 logger.exception("api_protection watchdog iteration failed")
 
     def _check_integrity(self) -> typing.List[str]:
-        """Return a list of human-readable names of protection pieces that have
-        been tampered with. Empty list means everything is intact."""
+        """Return human-readable names of protection pieces that changed since
+        the watchdog captured its baseline. Checks are baseline-relative: a piece
+        is "tampered" only if it differs from the known-good snapshot taken at
+        install, never from an absolute ideal the running core may never have met.
+        Empty list means everything is intact."""
         refs = self._watchdog_refs
         if not refs:
             return []
@@ -282,16 +326,21 @@ class APIRatelimiterMod(loader.Module):
         if t._get_forbid_constructors is not refs["get_forbid"]:
             problems.append("legacytl._get_forbid_constructors")
 
-        core = getattr(t, "_CORE_FORBIDDEN_CONSTRUCTORS", None)
-        if not isinstance(core, frozenset) or not _CANONICAL_FORBIDDEN <= core:
-            problems.append("legacytl._CORE_FORBIDDEN_CONSTRUCTORS")
+        # The core set is only checkable if we captured a hardened one. When we
+        # did, tampering = it stopped being that exact frozenset object.
+        if self._core_hardened_at_capture:
+            core = getattr(t, "_CORE_FORBIDDEN_CONSTRUCTORS", None)
+            if core is not refs["core"] or not isinstance(core, frozenset):
+                problems.append("legacytl._CORE_FORBIDDEN_CONSTRUCTORS")
 
-        # Call the *captured* original so a swapped-out global can't lie to us.
+        # Active forbidden set: trip only if it SHRANK below the captured
+        # baseline (a constructor was removed), not if it merely lacks ids the
+        # running core never carried.
         try:
             active = set(refs["get_forbid"]())
         except Exception:
             active = set()
-        if not _CANONICAL_FORBIDDEN <= active:
+        if not refs["active_baseline"] <= active:
             problems.append("active forbidden constructor set")
 
         call = getattr(self._client, "_call", None)
@@ -337,6 +386,62 @@ class APIRatelimiterMod(loader.Module):
             ),
         )
 
+    async def _warn_stale_core_once(self):
+        """The running process holds a legacytl older than the hardened core, so
+        the core-level protection (immutable frozenset, acceptLoginToken block)
+        is NOT active in memory even though it's installed on disk. Tell the
+        owner once — only a full restart loads it; no restore can."""
+        if self._stale_core_warned:
+            return
+        self._stale_core_warned = True
+        try:
+            missing = _CANONICAL_FORBIDDEN - set(_tlobject._get_forbid_constructors())
+        except Exception:
+            missing = _CANONICAL_FORBIDDEN
+        logger.warning(
+            "api_protection: hardened legacytl core is on disk but not in memory"
+            " — restart the userbot process to activate it; %d canonical"
+            " protection(s) not enforced right now",
+            len(missing),
+        )
+        try:
+            await self.inline.bot.send_message(
+                self.tg_id,
+                self.inline.sanitise_text(self.strings("core_outdated")),
+            )
+        except Exception:
+            logger.exception("api_protection: failed to deliver core-outdated notice")
+
+    def _blame_modules(self) -> typing.List[str]:
+        """Best-effort attribution: name loaded modules whose *source* references
+        the protection internals — the realistic culprits when something neuters
+        the guard, since disabling it means naming these symbols. Only external
+        (`<file …>`) modules are reported; core modules legitimately touch them.
+        This is a heuristic (a source mention, not proof), so the alert frames it
+        as a suspect."""
+        suspects = []
+        try:
+            modules = list(getattr(self.allmodules, "modules", []))
+        except Exception:
+            return suspects
+
+        for mod in modules:
+            if mod is self:
+                continue
+            origin = getattr(mod, "__origin__", "") or ""
+            if origin.startswith("<core"):
+                continue
+            try:
+                loader = sys.modules[mod.__class__.__module__].__loader__
+                src = loader.get_source() or ""
+            except Exception:
+                src = ""
+            if src and any(tok in src for tok in _PROTECTION_TOKENS):
+                name = getattr(mod, "name", None) or mod.__class__.__name__
+                suspects.append(f"{name} {origin}".strip())
+
+        return suspects
+
     async def _alert(self, problems: typing.List[str]):
         now = time.perf_counter()
         if now - self._last_alert < _ALERT_DEBOUNCE:
@@ -344,11 +449,19 @@ class APIRatelimiterMod(loader.Module):
         self._last_alert = now
 
         detail = ", ".join(problems)
-        logger.warning("api_protection: tampering detected and restored: %s", detail)
+        blamed = self._blame_modules()
+        culprit = "; ".join(blamed) if blamed else self.strings("tamper_no_module")
+        logger.warning(
+            "api_protection: tampering detected and restored: %s | suspect: %s",
+            detail,
+            culprit,
+        )
         try:
             await self.inline.bot.send_message(
                 self.tg_id,
-                self.inline.sanitise_text(self.strings("tamper_alert").format(detail)),
+                self.inline.sanitise_text(
+                    self.strings("tamper_alert").format(detail, culprit)
+                ),
             )
         except Exception:
             logger.exception("api_protection: failed to deliver tamper alert")
