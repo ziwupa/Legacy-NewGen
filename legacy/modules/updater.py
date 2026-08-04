@@ -175,6 +175,53 @@ class UpdaterMod(loader.Module):
         except subprocess.CalledProcessError:
             logger.exception("Req install failed")
 
+    @staticmethod
+    def _vcs_requirements() -> typing.List[str]:
+        """Requirement lines that point at a VCS (git+...). These are branch refs
+        that pip treats as already-satisfied once installed, so a plain .update
+        would never refresh them — we have to force them explicitly."""
+        path = os.path.join(
+            os.path.dirname(utils.get_base_dir()),
+            "requirements.txt",
+        )
+        try:
+            with open(path, encoding="utf-8") as f:
+                return [
+                    line.strip()
+                    for line in f
+                    if "git+" in line and not line.lstrip().startswith("#")
+                ]
+        except OSError:
+            return []
+
+    @classmethod
+    def refresh_core(cls):
+        """Force-reinstall the git-based core libs (e.g. legacytl) so pushes to
+        their branch reach the running bot through a normal .update, not just the
+        userbot code. --no-deps keeps it to the core itself; --force-reinstall
+        defeats pip's already-satisfied shortcut for branch refs. No --user, so
+        it installs into the active (venv) environment where the core lives."""
+        reqs = cls._vcs_requirements()
+        if not reqs:
+            return
+        logger.debug("Refreshing core libs: %s", reqs)
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--upgrade",
+                    "--force-reinstall",
+                    "--no-deps",
+                    *reqs,
+                ],
+                check=True,
+            )
+        except subprocess.CalledProcessError:
+            logger.exception("Core lib refresh failed")
+
     @loader.command()
     async def update(self, message: Message):
         try:
@@ -228,6 +275,12 @@ class UpdaterMod(loader.Module):
 
             if req_update:
                 self.req_common()
+
+            # A plain .update only pulls the userbot repo; the core TL lib is a
+            # git branch ref that pip treats as already-satisfied, so it would
+            # never refresh on its own. Force it every update so pushes to
+            # legacytl@beta actually reach the running bot.
+            self.refresh_core()
 
             await self.restart_common(msg_obj)
         except GitCommandError:
