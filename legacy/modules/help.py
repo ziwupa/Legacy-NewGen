@@ -170,16 +170,16 @@ class Help(loader.Module):
         except (KeyError, AttributeError):
             name = getattr(module, "name", "ERROR")
 
-        _name = (
-            "{} (v{}.{}.{})".format(
+        if hasattr(module, "__version__"):
+            # Pad short version tuples (e.g. (1, 0) or (2,)) to three
+            # components so indexing never raises IndexError.
+            version = (*module.__version__, 0, 0, 0)[:3]
+            _name = "{} (v{}.{}.{})".format(
                 utils.escape_html(name),
-                module.__version__[0],
-                module.__version__[1],
-                module.__version__[2],
+                *version,
             )
-            if hasattr(module, "__version__")
-            else utils.escape_html(name)
-        )
+        else:
+            _name = utils.escape_html(name)
 
         reply = "{} <b>{}</b>:".format(
             "<emoji document_id=5253521692008917018>🌙</emoji>", _name, ""
