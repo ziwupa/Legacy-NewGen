@@ -74,15 +74,49 @@ class UpdaterMod(loader.Module):
     async def inline_restart(self, call: InlineCall):
         await self.restart_common(call)
 
-    async def process_restart_message(self, msg_obj: typing.Union[InlineCall, Message]):
-        self.set(
-            "selfupdatemsg",
-            (
-                msg_obj.inline_message_id
-                if hasattr(msg_obj, "inline_message_id")
-                else f"{utils.get_chat_id(msg_obj)}:{msg_obj.id}"
-            ),
+    @staticmethod
+    def _dump_restart_target(msg_obj) -> typing.Union[str, dict]:
+        """Return a JSON-serializable handle for the message to edit after the
+        restart. Inline messages carry a TL InputBotInlineMessageID(64), which is
+        not JSON-serializable, so persist its (all-int) fields as a tagged dict —
+        the DB now rejects any non-JSON value."""
+        imi = getattr(msg_obj, "inline_message_id", None)
+        if imi is not None:
+            if isinstance(imi, str):
+                return imi
+            return {
+                "_tl": type(imi).__name__,
+                "dc_id": getattr(imi, "dc_id", None),
+                "owner_id": getattr(imi, "owner_id", None),
+                "id": getattr(imi, "id", None),
+                "access_hash": getattr(imi, "access_hash", None),
+            }
+        return f"{utils.get_chat_id(msg_obj)}:{msg_obj.id}"
+
+    @staticmethod
+    def _load_restart_target(ms):
+        """Rebuild what _dump_restart_target stored: a tagged dict becomes the TL
+        inline id again; anything else (a "chat:msg" string, a bot-api string, or
+        None) is returned unchanged."""
+        if not isinstance(ms, dict) or not ms.get("_tl"):
+            return ms
+        from legacytl.tl import types as _types
+
+        if ms["_tl"] == "InputBotInlineMessageID":
+            return _types.InputBotInlineMessageID(
+                dc_id=ms["dc_id"],
+                id=ms["id"],
+                access_hash=ms["access_hash"],
+            )
+        return _types.InputBotInlineMessageID64(
+            dc_id=ms["dc_id"],
+            owner_id=ms["owner_id"],
+            id=ms["id"],
+            access_hash=ms["access_hash"],
         )
+
+    async def process_restart_message(self, msg_obj: typing.Union[InlineCall, Message]):
+        self.set("selfupdatemsg", self._dump_restart_target(msg_obj))
 
     async def restart_common(
         self,
@@ -466,9 +500,9 @@ class UpdaterMod(loader.Module):
             took = "n/a"
 
         msg = self.strings("success").format(utils.ascii_face(), took)
-        ms = self.get("selfupdatemsg")
+        ms = self._load_restart_target(self.get("selfupdatemsg"))
 
-        if ":" in str(ms):
+        if isinstance(ms, str) and ":" in ms:
             chat_id, message_id = ms.split(":")
             chat_id, message_id = int(chat_id), int(message_id)
             await self._client.edit_message(chat_id, message_id, msg)
@@ -489,7 +523,7 @@ class UpdaterMod(loader.Module):
 
         self.set("restart_ts", None)
 
-        ms = self.get("selfupdatemsg")
+        ms = self._load_restart_target(self.get("selfupdatemsg"))
         msg = self.strings("full_success").format(utils.ascii_face(), took)
 
         if ms is None:
@@ -497,7 +531,7 @@ class UpdaterMod(loader.Module):
 
         self.set("selfupdatemsg", None)
 
-        if ":" in str(ms):
+        if isinstance(ms, str) and ":" in ms:
             chat_id, message_id = ms.split(":")
             chat_id, message_id = int(chat_id), int(message_id)
             await self._client.edit_message(chat_id, message_id, msg)
