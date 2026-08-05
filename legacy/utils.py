@@ -1207,12 +1207,18 @@ def _detect_by_uname():
 
 
 def _detect_by_device_tree():
-    if os.path.isfile("/proc/device-tree/model"):
+    try:
         with open("/proc/device-tree/model") as f:
             model = f.read()
-            for platform in _platforms:
-                if platform.lower() in model.lower():
-                    return get_platform(platform)
+    except OSError:
+        # File is absent on non-ARM hosts, and present-but-unreadable in some
+        # Android userlands (restricted /proc -> PermissionError). isfile()
+        # can't distinguish the latter, so just fall through to the next
+        # detector instead of crashing the caller (e.g. the web /can_add).
+        return None
+    for platform in _platforms:
+        if platform.lower() in model.lower():
+            return get_platform(platform)
     return None
 
 
@@ -1243,7 +1249,12 @@ def get_current_platform():
         _get_default_platform,
     ]
     for detect in detection_chain:
-        host = detect()
+        try:
+            host = detect()
+        except Exception:
+            # Platform detection is best-effort; a single failing probe must
+            # never break callers (this runs inside the web /can_add handler).
+            host = None
         if host:
             return host
 
