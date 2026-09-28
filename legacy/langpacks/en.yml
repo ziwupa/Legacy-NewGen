@@ -714,6 +714,10 @@ github_notify:
   targets_cleared: "🗑 <b>Notification targets cleared.</b> Set a new one with <code>{prefix}sendth</code> where you want them."
   target_fail: "🚫 <b>Unable to detect this chat.</b>"
   target_set: "📍 <b>GitHub notifications will be sent here:</b> {}{}"
+  test_no_token: "🚫 <b>No token.</b> Save one first: <code>{prefix}ghtoken &lt;token&gt;</code>"
+  test_no_targets: "🚫 <b>No targets.</b> Run <code>{prefix}sendth</code> where notifications should go."
+  test_ok: "✅ <b>GitNotify test</b> (token: <code>{}</code>, repos: {}, targets: {}) — delivery works, polling live."
+  test_sent: "✅ <b>Test sent.</b> If it didn't arrive, check the target chat."
   more: "
 <i>…and {} more</i>"
   push: "🔨 <b>Push to <code>{}</code> ({})</b>
@@ -736,4 +740,5 @@ github_notify:
   _cmd_doc_ghdel: "<owner/repo> | Stop tracking"
   _cmd_doc_ghlist: "| List tracked repositories"
   _cmd_doc_sendth: "[clear] | Send notifications here (topics supported)"
+  _cmd_doc_ghtest: "[owner/repo] | Check now, send test notification"
   _cls_doc: "GitHub repository notifications"

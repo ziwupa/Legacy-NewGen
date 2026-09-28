@@ -310,6 +310,47 @@ class GitNotifyMod(loader.Module):
             ),
         )
 
+    @loader.command()
+    async def ghtest(self, message: Message):
+        """[owner/repo] - Check setup now and send a test notification"""
+        token = (self.config["git_token"] or "").strip()
+        if not token:
+            await utils.answer(message, self.strings("test_no_token"))
+            return
+        status, data = await self._api("/user")
+        if status != 200 or not isinstance(data, dict) or not data.get("login"):
+            await utils.answer(message, self.strings("token_bad"))
+            return
+        repos = self._repos()
+        args = utils.get_args(message)
+        full = _normalize_repo(args[0]) if args else None
+        if full and full not in repos:
+            await utils.answer(message, self.strings("not_tracked").format(full))
+            return
+        if not repos:
+            await utils.answer(message, self.strings("empty"))
+            return
+        if not self._targets():
+            await utils.answer(message, self.strings("test_no_targets"))
+            return
+        if full:
+            await self._poll_repo(full, repos[full])
+        else:
+            for name, info in list(repos.items()):
+                try:
+                    await self._poll_repo(name, info)
+                except Exception:
+                    logger.exception("GitNotify: poll failed for %s", name)
+        self._last_poll = time.monotonic()
+        await self._send_all(
+            self.strings("test_ok").format(
+                utils.escape_html(data["login"]),
+                len(repos),
+                len(self._targets()),
+            )
+        )
+        await utils.answer(message, self.strings("test_sent"))
+
     # -- polling --
 
     async def _baseline(self, full: str, info: dict):
