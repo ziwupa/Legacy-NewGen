@@ -1923,8 +1923,49 @@ def get_ram_usage() -> float:
 
 _aiops = None
 
+_HOST_STAT = "/host-rootfs/proc/stat"
+
+
+def _host_stat_times() -> typing.Optional[typing.Tuple[float, float]]:
+    """Live host cpu counters from inside proot (guest /proc/stat is static)"""
+    try:
+        with open(_HOST_STAT, encoding="utf-8") as f:
+            parts = f.readline().split()[1:8]
+        vals = [float(x) for x in parts]
+        total = sum(vals)
+        idle = vals[3] + vals[4]
+        return total, idle
+    except Exception:
+        return None
+
+
+async def _apk_host_cpu_percent(interval: float = 0.5) -> float:
+    first = _host_stat_times()
+    if not first:
+        return 0.0
+
+    await asyncio.sleep(interval)
+
+    second = _host_stat_times()
+    if not second:
+        return 0.0
+
+    dtotal = second[0] - first[0]
+    didle = second[1] - first[1]
+    if dtotal <= 0:
+        return 0.0
+
+    return round((1 - didle / dtotal) * 100, 2)
+
 
 async def get_cpu_usage_async() -> float:
+    # Inside the phone host /proc/stat is a static stub, so a host-wide
+    # reading from the bound real rootfs is used instead
+    if os.environ.get("LEGACYAPK") == "1" and os.path.exists(_HOST_STAT):
+        with contextlib.suppress(Exception):
+            if host_cpu := await _apk_host_cpu_percent():
+                return host_cpu
+
     global _aiops
 
     if _aiops is None:
