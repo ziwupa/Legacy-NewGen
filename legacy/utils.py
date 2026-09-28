@@ -1959,6 +1959,15 @@ async def _apk_host_cpu_percent(interval: float = 0.5) -> float:
 
 
 async def get_cpu_usage_async() -> float:
+    # Phone host app samples the real (host-visible) load into
+    # host_info.json - guest /proc/stat is a static stub there
+    host_info = _apk_host_info()
+    if host_info:
+        with contextlib.suppress(Exception):
+            return round(
+                float(str(host_info.get("cpu_usage", "")).replace("%", "")), 2
+            )
+
     # Inside the phone host /proc/stat is a static stub, so a host-wide
     # reading from the bound real rootfs is used instead
     if os.environ.get("LEGACYAPK") == "1" and os.path.exists(_HOST_STAT):
