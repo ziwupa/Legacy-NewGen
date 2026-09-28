@@ -7,6 +7,7 @@
 import asyncio
 import contextlib
 import logging
+import re
 import time
 import typing
 
@@ -39,6 +40,39 @@ def _headers(token: str) -> dict:
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
+
+
+def _normalize_repo(raw: str) -> typing.Optional[str]:
+    """owner/repo out of a short name, URL or SSH remote. None if garbage."""
+    text = (raw or "").strip()
+    if not text:
+        return None
+    lowered = text.lower()
+    if "://" in text:
+        # Full URLs are only accepted for github.com.
+        host = re.sub(r"^[a-z][a-z0-9+.-]*://", "", lowered).split("/", 1)[0]
+        host = host.split("@")[-1].split(":")[0]
+        if host not in ("github.com", "www.github.com"):
+            return None
+        text = re.sub(r"^[a-z][a-z0-9+.-]*://[^/]+/", "", text)
+    elif "@" in text.split("/")[0] and ":" in text:
+        # git@github.com:owner/repo(.git) — host must be github as well.
+        pre, _, rest = text.partition(":")
+        if "github.com" not in pre.lower():
+            return None
+        text = rest
+    else:
+        # Schemeless host prefix: github.com/owner/repo.
+        text = re.sub(r"^(?:www\.)?github\.com/", "", text, flags=re.I)
+    text = text.strip().strip("/")
+    if text.lower().endswith(".git"):
+        text = text[: -len(".git")].strip("/")
+    parts = [part for part in text.split("/") if part]
+    if len(parts) != 2:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", "/".join(parts)):
+        return None
+    return "/".join(parts).lower()
 
 
 @loader.tds
@@ -180,13 +214,13 @@ class GitNotifyMod(loader.Module):
 
     @loader.command()
     async def ghadd(self, message: Message):
-        """<owner/repo> [branch] - Track repository (baseline, no spam)"""
+        """<owner/repo | URL> [branch] - Track repository (baseline, no spam)"""
         args = utils.get_args(message)
         if not args:
             await utils.answer(message, self.strings("add_usage"))
             return
-        full = args[0].strip().strip("/").lower()
-        if full.count("/") != 1:
+        full = _normalize_repo(args[0])
+        if not full:
             await utils.answer(message, self.strings("add_usage"))
             return
         branch = args[1].strip() if len(args) > 1 else ""
@@ -213,12 +247,15 @@ class GitNotifyMod(loader.Module):
 
     @loader.command()
     async def ghdel(self, message: Message):
-        """<owner/repo> - Stop tracking repository"""
+        """<owner/repo | URL> - Stop tracking repository"""
         args = utils.get_args(message)
         if not args:
             await utils.answer(message, self.strings("del_usage"))
             return
-        full = args[0].strip().strip("/").lower()
+        full = _normalize_repo(args[0])
+        if not full:
+            await utils.answer(message, self.strings("del_usage"))
+            return
         repos = self._repos()
         if full not in repos:
             await utils.answer(message, self.strings("not_tracked").format(full))
