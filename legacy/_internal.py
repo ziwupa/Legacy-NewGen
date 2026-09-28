@@ -38,6 +38,16 @@ def die():
 
 
 def restart():
+    if os.environ.get("LEGACYAPK") == "1":
+        # Phone host app: the supervisor outside restarts us if we exit, but
+        # die() below kills the whole process group — including the host app
+        # itself, which shares our pgid. Re-exec in place instead so only
+        # this process image is replaced.
+        logging.getLogger().setLevel(logging.CRITICAL)
+        print("Restarting...")
+        os.execl(sys.executable, sys.executable, "-m", "legacy", *sys.argv[1:])
+        return
+
     if "HIKKA_DO_NOT_RESTART2" in os.environ:
         print(
             "Got in a loop, exiting\nYou probably need to manually remove existing"
