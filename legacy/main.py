@@ -916,6 +916,19 @@ class Legacy:
         client.legacy_db = db
         await db.init()
 
+        # Phone host apps pass the inline bot username via environment, so a
+        # fresh install can skip the BotFather webapp roundtrip entirely
+        env_bot = os.environ.get("LEGACY_CUSTOM_INLINE_BOT", "").strip().lstrip("@")
+        if env_bot:
+            try:
+                existing_bot = db.get("legacy.inline", "custom_bot", False)
+            except Exception:
+                existing_bot = False
+
+            if existing_bot != env_bot:
+                db.set("legacy.inline", "custom_bot", env_bot)
+                db.set("legacy.inline", "bot_token", None)
+
         logging.debug("Got DB")
         logging.debug("Loading logging config...")
 

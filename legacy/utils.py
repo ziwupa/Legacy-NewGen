@@ -1123,11 +1123,32 @@ def chunks(_list: ListLike, n: int, /) -> typing.List[typing.List[typing.Any]]:
     return [_list[i : i + n] for i in range(0, len(_list), n)]
 
 
+def _apk_host_info() -> dict:
+    """
+    Metrics written by the Android host app into the shared support dir.
+    Empty unless running under the phone host (LEGACYAPK=1)
+    """
+    if os.environ.get("LEGACYAPK") != "1":
+        return {}
+
+    try:
+        import json
+
+        with open("/support/common/host_info.json", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
 def get_named_platform() -> str:
     """
     Returns formatted platform name
     :return: Platform name
     """
+
+    if os.environ.get("LEGACYAPK") == "1":
+        return "📱 legacyapk"
 
     host = get_current_platform() or _platforms.get("vds")
     if host:
@@ -1887,6 +1908,15 @@ def get_topic(message: Message) -> typing.Optional[int]:
 
 def get_ram_usage() -> float:
     """Returns current process tree memory usage in MB"""
+    host_info = _apk_host_info()
+    if host_info:
+        try:
+            return round(
+                float(str(host_info.get("ram_usage", "")).replace(" MB", "")), 1
+            )
+        except Exception:
+            pass
+
     try:
         import psutil
 
@@ -1901,6 +1931,15 @@ def get_ram_usage() -> float:
 
 
 async def get_cpu_usage_async() -> float:
+    host_info = _apk_host_info()
+    if host_info:
+        try:
+            return round(
+                float(str(host_info.get("cpu_usage", "")).replace("%", "")), 2
+            )
+        except Exception:
+            pass
+
     from aiopsutil import AsyncPSUtil
 
     aiops = AsyncPSUtil()
