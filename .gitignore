@@ -181,3 +181,7 @@ unknown_errors.txt
 
 # Ruff Format
 .ruff_cache/
+
+# SessionGuard forensic copies of caught stealers - never commit
+quarantined/
+legacy/quarantined
