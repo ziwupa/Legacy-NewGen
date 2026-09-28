@@ -721,7 +721,7 @@ github_notify:
   more: "
 <i>…and {} more</i>"
   push: "<b>📏 On {} new commits!</b>\n{} commits pushed.\n<a href=\"{}\">Compare changes</a>"
-  commit_head: "Commit <a href=\"{}\">#{}</a> by <i>{} ({})</i>"
+  commit_head: "<b>Commit <a href=\"#{}\">{}</a> by <i>{} ({})</i></b>"
   star: "<b>⭐ On {} added star!</b>\n\nTotal stars: <i>{}</i>\nUser: {}"
   _cfg_doc_stars: "Notify about new stars"
   release: "<b>🚀 New release on {}{}</b>\n<a href=\"{}\"><b>{}</b></a> — <i>{}</i>\nBy {}\n{}"
