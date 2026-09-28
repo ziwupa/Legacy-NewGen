@@ -445,6 +445,21 @@ api_protection:
   _cmd_doc_suspend_api_protect: "<time in seconds> - Suspend API Ratelimiter for n seconds"
   _cls_doc: "Helps userbot avoid spamming Telegram API"
 
+session_guard:
+  name: "SessionGuard"
+  trip_alert: "<emoji document_id=5312383351217201533>🚨</emoji> <b>SESSION THEFT BLOCKED!</b>\n\nModule <code>{}</code> tried to read your session file (<code>{}</code>). The read was <b>blocked</b> and the module was <b>{}</b>.\n\nIf you installed this module yourself and trust it, it may be a false positive — check the quarantined copy before reloading."
+  quarantined: "quarantined (unloaded, file deleted, copy kept)"
+  blocked: "blocked (auto-quarantine is off, module left in place)"
+  disabled: "🦴 <b>SessionGuard disabled</b> — session files are no longer watched"
+  enabled: "🛡 <b>SessionGuard enabled</b>"
+  status: "🛡 <b>SessionGuard:</b> {}\n<b>Suspicious modules quarantined on rescan:</b> {}"
+  on: "ON"
+  off: "OFF"
+  _cfg_doc_session_guard: "Watch session files and block modules that touch them"
+  _cfg_doc_auto_quarantine: "Unload and delete offending modules automatically (otherwise only block + notify)"
+  _cmd_doc_sessionguard: "[on|off] | Check status and rescan modules"
+  _cls_doc: "Blocks modules that try to steal your session"
+
 help:
   name: "Help"
   _cls_doc: "Shows help for modules and commands"
