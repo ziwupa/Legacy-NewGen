@@ -31,7 +31,7 @@ class UpdateNotifier(loader.Module):
             )
         )
 
-    def get_changelog(self) -> str:
+    def get_changelog(self, base: str = "HEAD") -> str:
         try:
             repo = git.Repo()
 
@@ -39,7 +39,7 @@ class UpdateNotifier(loader.Module):
                 remote.fetch()
 
             if not (
-                diff := repo.git.log([f"HEAD..origin/{version.branch}", "--oneline"])
+                diff := repo.git.log([f"{base}..origin/{version.branch}", "--oneline"])
             ):
                 return False
         except Exception:
@@ -70,6 +70,11 @@ class UpdateNotifier(loader.Module):
         except Exception as e:
             raise loader.LoadError("Can't load due to repo init error") from e
 
+        # Hash of the code this process actually runs. The checkout on disk
+        # may move ahead (local commit + push from the same directory),
+        # so updates are measured against startup state, not current HEAD
+        self._startup_hash = utils.get_git_hash()
+
         self._markup = lambda: self.inline.generate_markup(
             [
                 {"text": self.strings("update"), "data": "legacy/update"},
@@ -79,7 +84,11 @@ class UpdateNotifier(loader.Module):
 
     @loader.loop(interval=60, autostart=True)
     async def poller(self):
-        if self.config["disable_notifications"] or not self.get_changelog():
+        base = getattr(self, "_startup_hash", None) or utils.get_git_hash()
+
+        if self.config["disable_notifications"] or not (
+            changelog := self.get_changelog(base)
+        ):
             return
 
         self._pending = self.get_latest()
@@ -91,18 +100,18 @@ class UpdateNotifier(loader.Module):
             await asyncio.sleep(60)
             return
 
-        if self._pending not in {utils.get_git_hash(), self._notified}:
+        if self._pending not in {base, self._notified}:
             m = await self.inline.bot.send_photo(
                 self.tg_id,
                 "https://i.postimg.cc/1RWpKs8z/legacy-update-banner.png",
                 caption=self.strings("update_required").format(
-                    utils.get_git_hash()[:6],
+                    base[:6] if isinstance(base, str) else base,
                     '<a href="https://github.com/ziwupa/Legacy-NewGen/compare/{}...{}">{}</a>'.format(
-                        utils.get_git_hash()[:12],
+                        base[:12] if isinstance(base, str) else base,
                         self.get_latest()[:12],
                         self.get_latest()[:6],
                     ),
-                    self.get_changelog(),
+                    changelog,
                 ),
                 reply_markup=self._markup(),
             )
