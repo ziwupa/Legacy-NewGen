@@ -48,7 +48,6 @@ import grapheme
 import legacytl
 import requests
 import ujson
-from aiogram.types import Message as AiogramMessage
 from legacytl import hints
 from legacytl.tl.custom.message import Message
 from legacytl.tl.functions.account import UpdateNotifySettingsRequest
@@ -313,7 +312,7 @@ def get_args_split_by(
     return [section.strip() for section in sections if section.strip()]
 
 
-def get_chat_id(message: typing.Union[Message, AiogramMessage]) -> int:
+def get_chat_id(message: Message) -> int:
     """
     Get the chat ID, but without -100 if its a channel
     :param message: Message to get chat ID from

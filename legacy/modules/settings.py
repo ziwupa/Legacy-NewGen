@@ -8,7 +8,6 @@ from legacytl.extensions.html import CUSTOM_EMOJIS
 from legacytl.tl.types import Message
 from legacytl.types import InputMediaWebPage
 import legacytl
-import aiogram
 
 from .. import loader, main, utils
 from ..inline.types import InlineCall
@@ -86,7 +85,6 @@ class CoreMod(loader.Module):
                     else "🌙 <b>Legacy userbot</b>"
                 ),
                 (legacytl.__version__),
-                (aiogram.__version__),
                 (py_ver),
             ),
             file=(

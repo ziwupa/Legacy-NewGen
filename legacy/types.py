@@ -22,7 +22,6 @@ from dataclasses import dataclass, field
 from importlib.abc import SourceLoader
 
 import requests
-from aiogram.types import Message as BotMessage
 from legacytl.hints import EntityLike
 from legacytl.tl.functions.account import UpdateNotifySettingsRequest
 from legacytl.tl.types import (
@@ -55,7 +54,6 @@ __all__ = [
     "get_inline_handlers",
     "get_callback_handlers",
     "BotInlineCall",
-    "BotMessage",
     "InlineCall",
     "InlineMessage",
     "InlineQuery",

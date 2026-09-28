@@ -21,9 +21,11 @@ import typing
 from logging.handlers import RotatingFileHandler
 
 import legacytl
-from aiogram.exceptions import TelegramNetworkError as NetworkError
-from aiogram.exceptions import TelegramRetryAfter as RetryAfter
 from legacytl.errors.rpcbaseerrors import RPCError, ServerError
+from legacytl.errors.rpcerrorlist import FloodWaitError
+
+if typing.TYPE_CHECKING:
+    from .inline.tl import TelethonBot
 
 from . import utils
 from .tl_cache import CustomTelegramClient
@@ -61,7 +63,7 @@ logger = logging.getLogger(__name__)
 
 def override_text(exception: Exception) -> typing.Optional[str]:
     """Returns error-specific description if available, else `None`"""
-    if isinstance(exception, NetworkError):
+    if isinstance(exception, (OSError, asyncio.TimeoutError)):
         return "✈️ <b>You have problems with internet connection on your server.</b>"
     if isinstance(exception, ServerError):
         return "📡 <b>Telegram servers are currently experiencing issues. Please try again later.</b>"
@@ -69,8 +71,8 @@ def override_text(exception: Exception) -> typing.Optional[str]:
         return (
             "🕓 <b>Telegram translation service timed out. Please try again later.</b>"
         )
-    if isinstance(exception, RetryAfter):
-        return f"🕓 <b>{traceback.format_exception_only(type(exception), exception)[0].split(':')[1].strip()}</b>"
+    if isinstance(exception, FloodWaitError):
+        return f"✋ <b>Bot is hitting limits and got {exception.seconds} seconds floodwait</b>"
     if isinstance(exception, ModuleNotFoundError):
         return f"📦 <b>{traceback.format_exception_only(type(exception), exception)[0].split(':')[1].strip()}</b>"
     if isinstance(exception, asyncio.InvalidStateError):
@@ -525,7 +527,7 @@ class TelegramLogsHandler(logging.Handler):
 
     def _log_markup(
         self,
-        bot: "aiogram.Bot",  # type: ignore  # noqa: F821
+        bot: "TelethonBot",
         item: LegacyException,
         lib: typing.Optional[str] = None,
     ) -> list:
@@ -558,7 +560,7 @@ class TelegramLogsHandler(logging.Handler):
     async def _install_pylib(
         self,
         call: BotInlineCall,
-        bot: "aiogram.Bot",  # type: ignore  # noqa: F821
+        bot: "TelethonBot",
         item: LegacyException,
         lib: str,
     ):
@@ -705,7 +707,7 @@ class TelegramLogsHandler(logging.Handler):
     async def _install_failed(
         self,
         call: BotInlineCall,
-        bot: "aiogram.Bot",  # type: ignore  # noqa: F821
+        bot: "TelethonBot",
         item: LegacyException,
         lib: str,
         requirements: typing.List[str],
@@ -735,7 +737,7 @@ class TelegramLogsHandler(logging.Handler):
     async def _show_full_trace(
         self,
         call: BotInlineCall,
-        bot: "aiogram.Bot",  # type: ignore  # noqa: F821
+        bot: "TelethonBot",
         item: LegacyException,
     ):
         chunks = item.message + "\n\n<b>🌙 Full traceback:</b>\n" + item.full_stack
@@ -946,5 +948,4 @@ def init():
     logging.getLogger("legacytl").setLevel(logging.INFO)
     logging.getLogger("matplotlib").setLevel(logging.WARNING)
     logging.getLogger("aiohttp").setLevel(logging.WARNING)
-    logging.getLogger("aiogram").setLevel(logging.WARNING)
     logging.captureWarnings(True)

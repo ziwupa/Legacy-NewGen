@@ -18,7 +18,6 @@ import zipfile
 from pathlib import Path
 
 import ujson
-from aiogram.types import BufferedInputFile
 
 from .. import loader, main, utils
 from ..inline.types import BotInlineCall
@@ -386,7 +385,7 @@ class LegacyBackupMod(loader.Module):
 
             await self.inline.bot.send_document(
                 int(f"-100{self._content_channel_id}"),
-                BufferedInputFile(outfile.getvalue(), outfile.name),
+                outfile,
                 caption=self.strings["backup_caption"].format(
                     prefix=self.get_prefix(),
                 ),
@@ -469,7 +468,7 @@ class LegacyBackupMod(loader.Module):
 
         backup_msg = await self.inline.bot.send_document(
             int(f"-100{self._content_channel_id}"),
-            BufferedInputFile(outfile.getvalue(), outfile.name),
+            outfile,
             caption=self.strings["backup_caption"].format(
                 prefix=self.get_prefix(message.sender_id),
             ),

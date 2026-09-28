@@ -17,8 +17,8 @@ import time
 
 import aiohttp_jinja2
 import requests
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiohttp import web
+from legacytl import Button
 from legacytl.errors import (
     FloodWaitError,
     PasswordHashInvalidError,
@@ -470,13 +470,7 @@ class Web:
 
         token = utils.rand(8)
 
-        markup = InlineKeyboardMarkup(inline_keyboard=[[]])
-        markup.inline_keyboard[0].append(
-            InlineKeyboardButton(
-                text="🔓 Authorize user",
-                callback_data=f"authorize_web_{token}",
-            )
-        )
+        markup = [[Button.inline("🔓 Authorize user", f"authorize_web_{token}")]]
 
         ips = request.headers.get("X-FORWARDED-FOR", None) or request.remote
         cities = []

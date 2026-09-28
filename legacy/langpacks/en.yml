@@ -242,7 +242,6 @@ settings:
   legacy: |
     <blockquote>{}</blockquote>
     <blockquote><b><emoji document_id=5217890643321300022>✈️</emoji> <b>Legacy-Tl-New:</b> <i>{}</i>
-    <blockquote><b><emoji document_id=5258391003806584549>🧃</emoji> <b>Aiogram:</b> <i>{}</i>
     <emoji document_id=5289608677244811430>📁</emoji> <b>Python:</b> <i>{}</i></blockquote>
     <blockquote><emoji document_id=5316692281451887373>⭐️</emoji> <b>Special thanks</b></blockquote>
     <blockquote>@ziwupa — Legacy newgen maintainer
