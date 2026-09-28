@@ -720,7 +720,7 @@ github_notify:
   _cmd_doc_sendth: "[clear] | Слать уведомления сюда (топики поддерживаются)"
   _cmd_doc_ghtest: "[владелец/репо] | Проверить сейчас, отправить тест"
   _cls_doc: "Уведомления о репозиториях GitHub"
-  commit_msg: "<i>{}</i>\n"
+  commit_msg: "\n<i>{}</i>\n"
   issue: "<b>📌 В {} {} issue!</b>\n\n<i>{}</i>\n<a href=\"{}\">#{}</a> от {}"
   pr: "<b>{} В {} {} pull request!</b>\n\n<i>{}</i>\n<blockquote expandable>{}</blockquote>\n\nОт: {}\n\n<a href=\"{}\">#{}</a>"
   commit_diff: "\n<b>⌨ Diff:</b>\n➕ {}\n➖ {}\n"

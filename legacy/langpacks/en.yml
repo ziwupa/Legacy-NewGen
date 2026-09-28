@@ -740,7 +740,7 @@ github_notify:
   _cmd_doc_sendth: "[clear] | Send notifications here (topics supported)"
   _cmd_doc_ghtest: "[owner/repo] | Check now, send test notification"
   _cls_doc: "GitHub repository notifications"
-  commit_msg: "<i>{}</i>\n"
+  commit_msg: "\n<i>{}</i>\n"
   issue: "<b>📌 On {} {} issue!</b>\n\n<i>{}</i>\n<a href=\"{}\">#{}</a> by {}"
   pr: "<b>{} On {} {} pull request!</b>\n\n<i>{}</i>\n<blockquote expandable>{}</blockquote>\n\nUser: {}\n\n<a href=\"{}\">#{}</a>"
   commit_diff: "\n<b>⌨ Diff:</b>\n➕ {}\n➖ {}\n"
