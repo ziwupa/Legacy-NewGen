@@ -116,6 +116,12 @@ class GitNotifyMod(loader.Module):
                 lambda: self.strings("_cfg_doc_ci"),
                 validator=loader.validators.Boolean(),
             ),
+            loader.ConfigValue(
+                "track_stars",
+                True,
+                lambda: self.strings("_cfg_doc_stars"),
+                validator=loader.validators.Boolean(),
+            ),
         )
         self._last_poll = 0.0
         self._token_warned = False
@@ -174,21 +180,84 @@ class GitNotifyMod(loader.Module):
                     "GitNotify: unable to deliver to %s", target.get("chat")
                 )
 
-    def _fmt_commit(self, repo: str, commit: dict) -> str:
-        sha = commit.get("sha", "")[:7]
-        url = commit.get("html_url", f"https://github.com/{repo}/commit/{sha}")
-        info = commit.get("commit", {}) or {}
-        author = ((info.get("author") or {}).get("name")) or (
-            (commit.get("author") or {}).get("login", "?")
-        )
-        title = (info.get("message") or "").splitlines()[0][:120] if info.get(
-            "message"
-        ) else ""
+    def _fmt_commit(self, repo: str, sha: str, url: str, title: str, author: str) -> str:
         return (
-            f'🔨 <a href="{url}"><code>{utils.escape_html(sha)}</code></a>'
-            f" {utils.escape_html(title)}\n"
-            f"👤 {utils.escape_html(str(author))}"
+            f'🔨 <a href="{url}"><code>{utils.escape_html(sha[:7])}</code></a>'
+            f" {utils.escape_html(title)}"
+            f" 👤 {utils.escape_html(author)}"
         )
+
+    async def _fmt_push(self, repo: str, branch: str, base: str, commits: list) -> str:
+        """Reference-style push digest with per-commit details (files, diff)."""
+        head = commits[0].get("sha", "") if commits else ""
+        compare = f"https://github.com/{repo}/compare/{base[:12]}...{head[:12]}"
+        text = self.strings("push").format(
+            repo,
+            f"https://github.com/{repo}",
+            branch or "default",
+            len(commits),
+            compare,
+        )
+        detail_cap = 3
+        for commit in commits[:detail_cap]:
+            text += await self._fmt_commit_full(repo, commit.get("sha", ""))
+        if len(commits) > detail_cap:
+            rest = []
+            for commit in commits[detail_cap:10]:
+                info = commit.get("commit", {}) or {}
+                title = (info.get("message") or "").splitlines()
+                title = title[0][:100] if title else ""
+                author = ((info.get("author") or {}).get("name")) or (
+                    (commit.get("author") or {}).get("login", "?")
+                )
+                rest.append(
+                    self._fmt_commit(
+                        repo,
+                        commit.get("sha", ""),
+                        commit.get(
+                            "html_url",
+                            f"https://github.com/{repo}/commit/{commit.get('sha', '')}",
+                        ),
+                        title,
+                        str(author),
+                    )
+                )
+            text += "\n".join(rest)
+            if len(commits) > 10:
+                text += self.strings("more").format(len(commits) - 10)
+        return text
+
+    async def _fmt_commit_full(self, repo: str, sha: str) -> str:
+        """One commit block: header, full message, files, diff stats."""
+        if not sha:
+            return ""
+        status, detail = await self._api(f"/repos/{repo}/commits/{sha}")
+        if status != 200 or not isinstance(detail, dict):
+            url = f"https://github.com/{repo}/commit/{sha}"
+            return f"\n\nCommit <code>{utils.escape_html(sha[:7])}</code> ({url})"
+        url = detail.get("html_url", f"https://github.com/{repo}/commit/{sha}")
+        info = detail.get("commit", {}) or {}
+        author_name = (info.get("author") or {}).get("name") or "?"
+        author_login = (detail.get("author") or {}).get("login") or ""
+        byline = utils.escape_html(str(author_name))
+        if author_login:
+            byline += (
+                f" (<a href=\"https://github.com/{author_login}\">"
+                f"@{utils.escape_html(author_login)}</a>)"
+            )
+        message = (info.get("message") or "")[:1500]
+        text = self.strings("commit_head").format(sha[:7], url, byline)
+        if message:
+            text += f"\n<blockquote>{utils.escape_html(message)}</blockquote>"
+        files = detail.get("files") or []
+        if files:
+            names = "\n".join(
+                utils.escape_html(f.get("filename", "?")) for f in files[:20]
+            )
+            adds = sum(f.get("additions", 0) for f in files)
+            dels = sum(f.get("deletions", 0) for f in files)
+            text += self.strings("commit_files").format(names, adds, dels)
+        return text
 
     # -- commands --
 
@@ -388,6 +457,9 @@ class GitNotifyMod(loader.Module):
                 for run in (data.get("workflow_runs") or [])
                 if run.get("id") is not None
             }
+        status, data = await self._api(f"/repos/{full}")
+        if status == 200 and isinstance(data, dict):
+            state["stars"] = data.get("stargazers_count", 0) or 0
         seen[full] = state
         self._save_seen(seen)
 
@@ -430,20 +502,38 @@ class GitNotifyMod(loader.Module):
                         break
                     fresh.append(commit)
                 if fresh and state.get("sha"):
-                    lines = [self._fmt_commit(full, c) for c in reversed(fresh[:10])]
-                    extra = (
-                        self.strings("more").format(len(fresh) - 10)
-                        if len(fresh) > 10
-                        else ""
-                    )
+                    fresh = list(reversed(fresh))
                     await self._send_all(
-                        self.strings("push").format(full, branch or "default", "\n".join(lines))
-                        + extra
+                        await self._fmt_push(full, branch, state["sha"], fresh)
                     )
                 if not state.get("sha"):
                     # No baseline yet (added before baselines existed).
                     pass
                 state["sha"] = data[0].get("sha", state.get("sha"))
+                changed = True
+
+        if self.config["track_stars"]:
+            status, data = await self._api(f"/repos/{full}")
+            if status == 200 and isinstance(data, dict):
+                count = data.get("stargazers_count", 0) or 0
+                old_count = state.get("stars", 0)
+                if count > old_count and old_count:
+                    login = await self._latest_stargazer(full, count)
+                    await self._send_all(
+                        self.strings("star").format(
+                            full,
+                            f"https://github.com/{full}",
+                            count,
+                            utils.escape_html(login or "?"),
+                            (
+                                f" (<a href=\"https://github.com/{login}\">"
+                                f"@{utils.escape_html(login)}</a>)"
+                                if login
+                                else ""
+                            ),
+                        )
+                    )
+                state["stars"] = count
                 changed = True
 
         if self.config["track_issues"]:
@@ -514,6 +604,22 @@ class GitNotifyMod(loader.Module):
         if changed:
             seen[full] = state
             self._save_seen(seen)
+
+    async def _latest_stargazer(self, full: str, count: int) -> str:
+        """Login of the most recent stargazer (best effort)."""
+        try:
+            page = max(1, -(-count // 100))
+            status, data = await self._api(
+                f"/repos/{full}/stargazers?per_page=100&page={page}"
+            )
+            if status == 200 and isinstance(data, list) and data:
+                user = (data[-1].get("user") or data[-1]) if isinstance(
+                    data[-1], dict
+                ) else {}
+                return (user or {}).get("login", "")
+        except Exception:
+            logger.debug("GitNotify: stargazer lookup failed", exc_info=True)
+        return ""
 
     def _fmt_issue(self, repo: str, item: dict, is_pr: bool, opened: bool) -> str:
         num = item.get("number")
