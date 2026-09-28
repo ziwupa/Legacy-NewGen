@@ -1908,15 +1908,6 @@ def get_topic(message: Message) -> typing.Optional[int]:
 
 def get_ram_usage() -> float:
     """Returns current process tree memory usage in MB"""
-    host_info = _apk_host_info()
-    if host_info:
-        try:
-            return round(
-                float(str(host_info.get("ram_usage", "")).replace(" MB", "")), 1
-            )
-        except Exception:
-            pass
-
     try:
         import psutil
 
@@ -1931,20 +1922,17 @@ def get_ram_usage() -> float:
 
 
 async def get_cpu_usage_async() -> float:
-    host_info = _apk_host_info()
-    if host_info:
-        try:
-            return round(
-                float(str(host_info.get("cpu_usage", "")).replace("%", "")), 2
-            )
-        except Exception:
-            pass
-
     from aiopsutil import AsyncPSUtil
 
     aiops = AsyncPSUtil()
 
     cpu_usage = await aiops.cpu_percent(interval=0.5)
+
+    if not cpu_usage:
+        # First measurement after (re)start has no baseline and reads 0.0;
+        # fall back to an instant ps-based sample instead of showing zero
+        with contextlib.suppress(Exception):
+            cpu_usage = get_cpu_usage() or cpu_usage
 
     return cpu_usage
 
