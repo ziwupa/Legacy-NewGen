@@ -561,23 +561,69 @@ class SessionGuardMod(loader.Module):
                 await self._quarantine(classname, full, "source-scan: " + ", ".join(tokens))
         return hits
 
+    def _quarantine_files(self) -> typing.List[str]:
+        """Quarantined copies on disk, newest first."""
+        try:
+            entries = [
+                os.path.join(self._quarantine_dir, entry)
+                for entry in os.listdir(self._quarantine_dir)
+                if entry.endswith(".quarantined")
+            ]
+        except Exception:
+            return []
+        entries.sort(key=lambda path: os.path.getmtime(path), reverse=True)
+        return entries
+
+    @staticmethod
+    def _quarantine_name(path: str) -> str:
+        """Human name of a quarantined copy: ClassName (+ tg id kept raw)."""
+        name = os.path.basename(path)
+        if name.endswith(".quarantined"):
+            name = name[: -len(".quarantined")]
+        name = re.sub(r"\.\d+$", "", name)
+        return name
+
     @loader.command()
     async def sessionguard(self, message):
         """- Check session-theft protection status and rescan modules"""
-        args = utils.get_args_raw(message).strip().lower()
-        if args == "off":
+        args = utils.get_args_raw(message).strip()
+        low = args.lower()
+        if low == "off":
             self.config["session_guard"] = False
             await utils.answer(message, self.strings("disabled"))
             return
-        if args == "on":
+        if low == "on":
             self.config["session_guard"] = True
             await utils.answer(message, self.strings("enabled"))
             return
+        if low.startswith("send "):
+            want = args[5:].strip().lower()
+            for path in self._quarantine_files():
+                if self._quarantine_name(path).lower().startswith(want):
+                    await utils.answer(
+                        message,
+                        self.strings("q_sent").format(
+                            utils.escape_html(self._quarantine_name(path))
+                        ),
+                        file=path,
+                    )
+                    return
+            await utils.answer(
+                message, self.strings("q_not_found").format(utils.escape_html(args[5:].strip()))
+            )
+            return
         hits = await self.rescan()
-        await utils.answer(
-            message,
-            self.strings("status").format(
-                self.strings("on" if self._guard_on() else "off"),
-                len(hits),
-            ),
+        text = self.strings("status").format(
+            self.strings("on" if self._guard_on() else "off"),
+            len(hits),
         )
+        files = self._quarantine_files()
+        if files:
+            text += self.strings("q_list_header")
+            for path in files[:20]:
+                text += self.strings("q_item").format(
+                    utils.escape_html(self._quarantine_name(path))
+                )
+        else:
+            text += self.strings("q_empty")
+        await utils.answer(message, text)

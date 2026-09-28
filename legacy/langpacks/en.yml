@@ -457,7 +457,12 @@ session_guard:
   off: "OFF"
   _cfg_doc_session_guard: "Watch session files and block modules that touch them"
   _cfg_doc_auto_quarantine: "Unload and delete offending modules automatically (otherwise only block + notify)"
-  _cmd_doc_sessionguard: "[on|off] | Check status and rescan modules"
+  _cmd_doc_sessionguard: "[on|off|send <name>] | Status, rescan, send quarantined file"
+  q_list_header: "\n<b>Quarantined modules:</b>"
+  q_item: "\n<code>{}</code>"
+  q_empty: "\n<i>Quarantine is empty.</i>"
+  q_sent: "📄 <b>Quarantined file:</b> <code>{}</code>"
+  q_not_found: "🚫 <b>No quarantined module matching</b> <code>{}</code>"
   _cls_doc: "Blocks modules that try to steal your session"
 
 help:
