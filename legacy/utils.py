@@ -1921,16 +1921,28 @@ def get_ram_usage() -> float:
         return 0
 
 
+_aiops = None
+
+
 async def get_cpu_usage_async() -> float:
-    from aiopsutil import AsyncPSUtil
+    global _aiops
 
-    aiops = AsyncPSUtil()
+    if _aiops is None:
+        from aiopsutil import AsyncPSUtil
 
-    cpu_usage = await aiops.cpu_percent(interval=0.5)
+        _aiops = AsyncPSUtil()
+
+    cpu_usage = await _aiops.cpu_percent(interval=0.5)
 
     if not cpu_usage:
-        # First measurement after (re)start has no baseline and reads 0.0;
-        # fall back to an instant ps-based sample instead of showing zero
+        # No baseline yet (or truly idle): a second sample on the same
+        # instance has a reference point and returns the real value
+        await asyncio.sleep(0.3)
+        with contextlib.suppress(Exception):
+            cpu_usage = await _aiops.cpu_percent(interval=0.3) or cpu_usage
+
+    if not cpu_usage:
+        # Last resort: instant ps-based sample
         with contextlib.suppress(Exception):
             cpu_usage = get_cpu_usage() or cpu_usage
 
