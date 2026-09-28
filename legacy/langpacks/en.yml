@@ -720,33 +720,13 @@ github_notify:
   test_sent: "✅ <b>Test sent.</b> If it didn't arrive, check the target chat."
   more: "
 <i>…and {} more</i>"
-  push: |
-    📏 On <a href="{}">{}:{}</a> new commits!
-    {} commits pushed.
-    <a href="{}">Compare changes</a>
-  commit_head: "
-
-Commit #{} ({}) by {}"
-  commit_files: "
-
-🖊 Modified files:
-{}
-
-⌨️ Diff:
-➕ {}
-➖ {}"
-  star: "⭐️ On <code>{}</code> (<a href=\"{}\">repo</a>) added star!
-
-Total stars: {}
-User: @{}{}"
+  push: "<b>📏 On {} new commits!</b>\n{} commits pushed.\n<a href=\"{}\">Compare changes</a>"
+  commit_head: "Commit <a href=\"{}\">#{}</a> by <i>{} ({})</i>"
+  star: "<b>⭐ On {} added star!</b>\n\nTotal stars: <i>{}</i>\nUser: {}"
   _cfg_doc_stars: "Notify about new stars"
-  opened: "🆕 <b>New {} <a href=\"{}\">#{}</a></b>"
-  closed: "🔒 <b>Closed {} <a href=\"{}\">#{}</a></b>"
-  merged: "🟣 <b>Merged PR <a href=\"{}\">#{}</a></b>"
-  release: "🎉 <b>Release in <code>{}</code>: <a href=\"{}\">{}</a></b> <code>{}</code>"
+  release: "<b>🚀 New release on {}{}</b>\n<a href=\"{}\"><b>{}</b></a> — <i>{}</i>\nBy {}\n{}"
   pre: " <i>(pre-release)</i>"
-  ci: "{} <b>CI {}:</b> <code>{}</code> <i>({})</i>
-🔗 <a href=\"{}\">Logs</a> | 📦 <code>{}</code>"
+  ci: "<b>{} Workflow <i>{}</i> {} on {}{}</b>\nBy {}{}\n<a href=\"{}\">View run</a>"
   _cfg_doc_token: "GitHub personal access token (repo scope for private repos)"
   _cfg_doc_interval: "Poll interval in minutes"
   _cfg_doc_commits: "Notify about new commits"
@@ -760,3 +740,11 @@ User: @{}{}"
   _cmd_doc_sendth: "[clear] | Send notifications here (topics supported)"
   _cmd_doc_ghtest: "[owner/repo] | Check now, send test notification"
   _cls_doc: "GitHub repository notifications"
+  commit_msg: "<i>{}</i>\n"
+  issue: "<b>📌 On {} {} issue!</b>\n\n<i>{}</i>\n<a href=\"{}\">#{}</a> by {}"
+  pr: "<b>{} On {} {} pull request!</b>\n\n<i>{}</i>\n<blockquote expandable>{}</blockquote>\n\nUser: {}\n\n<a href=\"{}\">#{}</a>"
+  commit_diff: "\n<b>⌨ Diff:</b>\n➕ {}\n➖ {}\n"
+  notes: "<blockquote expandable>{}</blockquote>\n"
+  commit_created: "\n<b>🔧 Created files:</b>\n<code>{}</code>\n"
+  commit_removed: "\n<b>🗑 Removed files:</b>\n<code>{}</code>\n"
+  commit_modified: "\n<b>🖊 Modified files:</b>\n<code>{}</code>\n"

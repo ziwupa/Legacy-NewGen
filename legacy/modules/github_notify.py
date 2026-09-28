@@ -26,11 +26,11 @@ _PAGE = 10
 _CI_ICONS = {
     "success": "✅",
     "failure": "❌",
-    "cancelled": "🚫",
-    "skipped": "⏭️",
+    "cancelled": "⚪",
+    "skipped": "⏭",
     "timed_out": "⌛",
-    "action_required": "❗",
-    "neutral": "⚪",
+    "action_required": "⚠️",
+    "neutral": "➖",
 }
 
 
@@ -40,6 +40,24 @@ def _headers(token: str) -> dict:
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
+
+
+def _truncate(text, limit=400):
+    if not text:
+        return ""
+    text = str(text).strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "…"
+
+
+def _user_link(login):
+    login = str(login or "?")
+    return f'<a href="https://github.com/{login}">@{utils.escape_html(login)}</a>'
+
+
+def _repo_link(full, url=None):
+    return f'<a href="{url or "https://github.com/" + full}">{utils.escape_html(full)}</a>'
 
 
 def _normalize_repo(raw: str) -> typing.Optional[str]:
@@ -190,15 +208,18 @@ class GitNotifyMod(loader.Module):
     async def _fmt_push(
         self, repo: str, display: str, branch: str, base: str, commits: list
     ) -> list:
-        """Reference-style push digest: header message first, then one
-        message per commit (body as quote, files, diff)."""
+        """Reference-style push digest: bold header, then one expandable
+        quote block per commit (message, Created/Removed/Modified, Diff).
+        Long digests split the same way the reference splitter does."""
         head = commits[0].get("sha", "") if commits else ""
         compare = f"https://github.com/{repo}/compare/{base[:12]}...{head[:12]}"
+        repo_link = (
+            f'<a href="https://github.com/{repo}">'
+            f"{utils.escape_html(display)}:{utils.escape_html(branch)}</a>"
+        )
         messages = [
             self.strings("push").format(
-                f"https://github.com/{repo}",
-                display,
-                branch,
+                repo_link,
                 len(commits),
                 compare,
             )
@@ -230,10 +251,16 @@ class GitNotifyMod(loader.Module):
             messages.append("\n".join(rest))
             if len(commits) > 10:
                 messages[-1] += self.strings("more").format(len(commits) - 10)
-        return [text for text in messages if text.strip()]
+        texts = [text for text in messages if text.strip()]
+        joined = "\n\n".join(texts)
+        # Same visual result as the reference splitter: short digests stay
+        # one bubble, long ones break into header + quote blocks.
+        if len(joined) <= 4000:
+            return [joined]
+        return texts
 
     async def _fmt_commit_full(self, repo: str, sha: str) -> str:
-        """One commit block: header, full message, files, diff stats."""
+        """One commit block, exactly like the reference formatter."""
         if not sha:
             return ""
         status, detail = await self._api(f"/repos/{repo}/commits/{sha}")
@@ -242,27 +269,42 @@ class GitNotifyMod(loader.Module):
             return f"\n\nCommit <code>{utils.escape_html(sha[:7])}</code> ({url})"
         url = detail.get("html_url", f"https://github.com/{repo}/commit/{sha}")
         info = detail.get("commit", {}) or {}
-        author_name = (info.get("author") or {}).get("name") or "?"
-        author_login = (detail.get("author") or {}).get("login") or ""
-        byline = utils.escape_html(str(author_name))
-        if author_login:
-            byline += (
-                f" (<a href=\"https://github.com/{author_login}\">"
-                f"@{utils.escape_html(author_login)}</a>)"
-            )
-        message = (info.get("message") or "")[:1500]
-        text = self.strings("commit_head").format(sha[:7], url, byline)
+        author_name = utils.escape_html(str((info.get("author") or {}).get("name") or "?"))
+        author_login = ((detail.get("author") or {}).get("login")) or ""
+        author_link = (
+            _user_link(author_login) if author_login else f"<i>{author_name}</i>"
+        )
+        message = _truncate(info.get("message"), 500)
+        text = self.strings("commit_head").format(url, sha[:7], author_name, author_link)
         if message:
-            text += f"\n<blockquote>{utils.escape_html(message)}</blockquote>"
+            text += self.strings("commit_msg").format(utils.escape_html(message))
         files = detail.get("files") or []
         if files:
-            names = "\n".join(
-                utils.escape_html(f.get("filename", "?")) for f in files[:20]
-            )
+            groups = {"added": [], "removed": [], "modified": []}
+            for f in files:
+                status_ = (f.get("status") or "").lower()
+                if status_ == "added":
+                    groups["added"].append(f.get("filename", "?"))
+                elif status_ == "removed":
+                    groups["removed"].append(f.get("filename", "?"))
+                else:
+                    groups["modified"].append(f.get("filename", "?"))
+            if groups["added"]:
+                text += self.strings("commit_created").format(
+                    utils.escape_html("\n".join(groups["added"]))
+                )
+            if groups["removed"]:
+                text += self.strings("commit_removed").format(
+                    utils.escape_html("\n".join(groups["removed"]))
+                )
+            if groups["modified"]:
+                text += self.strings("commit_modified").format(
+                    utils.escape_html("\n".join(groups["modified"]))
+                )
             adds = sum(f.get("additions", 0) for f in files)
             dels = sum(f.get("deletions", 0) for f in files)
-            text += self.strings("commit_files").format(names, adds, dels)
-        return text
+            text += self.strings("commit_diff").format(adds, dels)
+        return "<blockquote expandable>" + text + "</blockquote>"
 
     # -- commands --
 
@@ -547,16 +589,9 @@ class GitNotifyMod(loader.Module):
                     login = await self._latest_stargazer(full, count)
                     await self._send_all(
                         self.strings("star").format(
-                            full,
-                            f"https://github.com/{full}",
+                            _repo_link(full),
                             count,
-                            utils.escape_html(login or "?"),
-                            (
-                                f" (<a href=\"https://github.com/{login}\">"
-                                f"@{utils.escape_html(login)}</a>)"
-                                if login
-                                else ""
-                            ),
+                            _user_link(login) if login else "<i>?</i>",
                         )
                     )
                 state["stars"] = count
@@ -576,9 +611,21 @@ class GitNotifyMod(loader.Module):
                     is_pr = "pull_request" in item
                     old = known.get(str(num))
                     if num > max_no and max_no:
-                        await self._send_all(self._fmt_issue(full, item, is_pr, True))
-                    elif old and old.get("state") == "open" and item.get("state") != "open":
-                        await self._send_all(self._fmt_issue(full, item, is_pr, False))
+                        await self._send_all(
+                            self._fmt_issue(full, item, is_pr, "opened")
+                        )
+                    elif old and old.get("state") != item.get("state"):
+                        if item.get("state") == "open":
+                            action = "reopened"
+                        elif is_pr and bool(
+                            item.get("pull_request", {}).get("merged_at")
+                        ):
+                            action = "merged"
+                        else:
+                            action = "closed"
+                        await self._send_all(
+                            self._fmt_issue(full, item, is_pr, action)
+                        )
                     known[str(num)] = {"state": item.get("state"), "pr": is_pr}
                 nums = [i.get("number") for i in data if i.get("number") is not None]
                 if nums:
@@ -647,46 +694,73 @@ class GitNotifyMod(loader.Module):
             logger.debug("GitNotify: stargazer lookup failed", exc_info=True)
         return ""
 
-    def _fmt_issue(self, repo: str, item: dict, is_pr: bool, opened: bool) -> str:
+    def _fmt_issue(
+        self, repo: str, item: dict, is_pr: bool, action: str
+    ) -> str:
         num = item.get("number")
         url = item.get("html_url", f"https://github.com/{repo}/issues/{num}")
-        title = (item.get("title") or "")[:150]
+        title = (item.get("title") or "")[:200]
         user = ((item.get("user") or {}).get("login")) or "?"
-        kind = "PR" if is_pr else "issue"
-        if opened:
-            head = self.strings("opened").format(kind, url, num)
-        elif is_pr and bool(item.get("pull_request", {}).get("merged_at")):
-            head = self.strings("merged").format(url, num)
-        else:
-            head = self.strings("closed").format(kind, url, num)
-        return (
-            f"{head}\n<b>{utils.escape_html(title)}</b>\n"
-            f"👤 {utils.escape_html(str(user))} | 📦 <code>{repo}</code>"
+        repo_link = _repo_link(repo)
+        if is_pr:
+            icon = "🟣" if action == "merged" else "📝"
+            body = _truncate(item.get("body") or "No description", 200)
+            return self.strings("pr").format(
+                icon,
+                repo_link,
+                action,
+                utils.escape_html(title),
+                utils.escape_html(body),
+                _user_link(user),
+                url,
+                num,
+            )
+        return self.strings("issue").format(
+            repo_link,
+            action,
+            utils.escape_html(title),
+            url,
+            num,
+            _user_link(user),
         )
 
     def _fmt_release(self, repo: str, rel: dict) -> str:
         tag = rel.get("tag_name", "?")
-        name = rel.get("name") or tag
+        title = rel.get("name") or tag
         url = rel.get("html_url", f"https://github.com/{repo}/releases")
-        body = (rel.get("body") or "")[:300]
-        text = self.strings("release").format(repo, url, utils.escape_html(name), tag)
-        if body:
-            text += f"\n<blockquote>{utils.escape_html(body)}</blockquote>"
-        if rel.get("prerelease"):
-            text += self.strings("pre")
-        return text
+        author = ((rel.get("author") or {}).get("login")) or "?"
+        pre = self.strings("pre") if rel.get("prerelease") else ""
+        notes = _truncate(rel.get("body"), 500)
+        notes_block = (
+            self.strings("notes").format(utils.escape_html(notes)) if notes else ""
+        )
+        return self.strings("release").format(
+            _repo_link(repo),
+            pre,
+            url,
+            utils.escape_html(str(tag)),
+            utils.escape_html(str(title)),
+            _user_link(author),
+            notes_block,
+        )
 
     def _fmt_run(self, repo: str, run: dict) -> str:
         name = run.get("name") or run.get("displayTitle") or "workflow"
-        conclusion = run.get("conclusion", "?")
+        conclusion = run.get("conclusion") or run.get("status") or "?"
         url = run.get("html_url", f"https://github.com/{repo}/actions")
-        branch = (run.get("head_branch") or "")
+        branch = f":{run['head_branch']}" if run.get("head_branch") else ""
+        attempt = (
+            f" (attempt #{run['run_attempt']})" if (run.get("run_attempt") or 0) > 1 else ""
+        )
+        actor = ((run.get("actor") or {}).get("login")) or "?"
         return self.strings("ci").format(
-            _CI_ICONS.get(conclusion, "⚪"),
+            _CI_ICONS.get(conclusion, "ℹ️"),
             utils.escape_html(str(name)),
             utils.escape_html(str(conclusion)),
-            utils.escape_html(branch),
+            _repo_link(repo),
+            branch,
+            _user_link(actor),
+            attempt,
             url,
-            repo,
         )
 

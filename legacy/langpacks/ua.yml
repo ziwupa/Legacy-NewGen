@@ -693,33 +693,13 @@ github_notify:
   test_sent: "✅ <b>Тест надіслано.</b> Якщо не прийшов — перевір цільовий чат."
   more: "
 <i>…і ще {}</i>"
-  push: |
-    📏 У <a href="{}">{}:{}</a> нові коміти!
-    Комітів запушено: {}.
-    <a href="{}">Порівняти зміни</a>
-  commit_head: "
-
-Коміт #{} ({}) від {}"
-  commit_files: "
-
-🖊 Змінені файли:
-{}
-
-⌨️ Diff:
-➕ {}
-➖ {}"
-  star: "⭐️ У <code>{}</code> (<a href=\"{}\">репо</a>) нова зірка!
-
-Всього зірок: {}
-Користувач: @{}{}"
+  push: "<b>📏 У {} нові коміти!</b>\nКомітів запушено: {}.\n<a href=\"{}\">Порівняти зміни</a>"
+  commit_head: "Коміт <a href=\"{}\">#{}</a> від <i>{} ({})</i>"
+  star: "<b>⭐ У {} нова зірка!</b>\n\nВсього зірок: <i>{}</i>\nКористувач: {}"
   _cfg_doc_stars: "Сповіщати про нові зірки"
-  opened: "🆕 <b>Новий {} <a href=\"{}\">#{}</a></b>"
-  closed: "🔒 <b>Закрито {} <a href=\"{}\">#{}</a></b>"
-  merged: "🟣 <b>Змерджено PR <a href=\"{}\">#{}</a></b>"
-  release: "🎉 <b>Реліз у <code>{}</code>: <a href=\"{}\">{}</a></b> <code>{}</code>"
+  release: "<b>🚀 Новий реліз у {}{}</b>\n<a href=\"{}\"><b>{}</b></a> — <i>{}</i>\nВід {}\n{}"
   pre: " <i>(пре-реліз)</i>"
-  ci: "{} <b>CI {}:</b> <code>{}</code> <i>({})</i>
-🔗 <a href=\"{}\">Логи</a> | 📦 <code>{}</code>"
+  ci: "<b>{} CI <i>{}</i> {} у {}{}</b>\nВід {}{}\n<a href=\"{}\">Логи</a>"
   _cfg_doc_token: "Персональний токен GitHub (scope repo для приватних репозиторіїв)"
   _cfg_doc_interval: "Інтервал опитування у хвилинах"
   _cfg_doc_commits: "Сповіщати про нові коміти"
@@ -733,3 +713,11 @@ github_notify:
   _cmd_doc_sendth: "[clear] | Слати сповіщення сюди (топіки підтримуються)"
   _cmd_doc_ghtest: "[власник/репо] | Перевірити зараз, надіслати тест"
   _cls_doc: "Сповіщення про репозиторії GitHub"
+  commit_msg: "<i>{}</i>\n"
+  issue: "<b>📌 У {} {} issue!</b>\n\n<i>{}</i>\n<a href=\"{}\">#{}</a> від {}"
+  pr: "<b>{} У {} {} pull request!</b>\n\n<i>{}</i>\n<blockquote expandable>{}</blockquote>\n\nВід: {}\n\n<a href=\"{}\">#{}</a>"
+  commit_diff: "\n<b>⌨ Diff:</b>\n➕ {}\n➖ {}\n"
+  notes: "<blockquote expandable>{}</blockquote>\n"
+  commit_created: "\n<b>🔧 Створені файли:</b>\n<code>{}</code>\n"
+  commit_removed: "\n<b>🗑 Видалені файли:</b>\n<code>{}</code>\n"
+  commit_modified: "\n<b>🖊 Змінені файли:</b>\n<code>{}</code>\n"
