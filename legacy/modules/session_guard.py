@@ -25,8 +25,28 @@ _REAL_IO_OPEN = io.open
 _REAL_OS_OPEN = os.open
 _REAL_SQLITE_CONNECT = sqlite3.connect
 
-# loaded_modules files look like {ClassName}_{tg_id}.py — core files never do.
+# External modules are compiled with a pseudo-filename, real core files never are.
+_BRACKETED_FILE = re.compile(r"^<file (.+)>$")
+
+# Filesystem fallback (tests, manually executed scripts).
 _EXTERNAL_FILE = re.compile(r"^(.+)_(\d+)\.py$")
+
+
+def _resolve_module_file(classname: str) -> typing.Optional[str]:
+    """Find the on-disk source of a loaded module for the forensic copy."""
+    try:
+        from .. import loader as _loader
+
+        directory = _loader.LOADED_MODULES_DIR
+    except Exception:
+        return None
+    try:
+        for entry in os.listdir(directory):
+            if entry.startswith(classname + "_") and entry.endswith(".py"):
+                return os.path.join(directory, entry)
+    except Exception:
+        pass
+    return None
 
 # Source-scan rules, applied to code with string literals and comments
 # masked out (signatures and docs must not count). Network-send verbs only
@@ -108,10 +128,30 @@ def _is_session_path(path: str, sessions_dir: str = "") -> bool:
     return False
 
 
-def _attribute(core_dir: str) -> typing.Optional[typing.Tuple[str, str, int, str]]:
-    """Nearest externally-loaded module in the call stack, if any."""
+def _attribute(core_dir: str) -> typing.Optional[typing.Tuple[str, typing.Optional[str], int, str]]:
+    """Nearest externally-loaded module in the call stack, if any.
+
+    Production modules are compiled by StringLoader with a pseudo-filename
+    like `<file legacy.modules.StealerMod_8243127223>` — the class part (sans
+    tg suffix) is what the loader unloads by. `<string>` (eval), `<frozen>`
+    and core files never attribute.
+    """
     for frame_info in inspect.stack(0):
         filename = frame_info.filename or ""
+        bracketed = _BRACKETED_FILE.match(filename)
+        if bracketed:
+            inner = bracketed.group(1)
+            if inner.startswith("legacy.modules."):
+                dotted = inner.rsplit(".", 1)[1]
+                classname = re.sub(r"_\d+$", "", dotted)
+                if classname:
+                    return (
+                        classname,
+                        _resolve_module_file(classname),
+                        frame_info.lineno,
+                        frame_info.function,
+                    )
+            continue
         if filename.startswith("<") and filename.endswith(">"):
             continue
         try:
@@ -135,7 +175,7 @@ def _attribute(core_dir: str) -> typing.Optional[typing.Tuple[str, str, int, str
 
 def _check_access(
     path: str, sessions_dir: str = ""
-) -> typing.Optional[typing.Tuple[str, str, int, str]]:
+) -> typing.Optional[typing.Tuple[str, typing.Optional[str], int, str]]:
     if not _is_session_path(path, sessions_dir):
         return None
     return _attribute(_STATE["core_dir"])
@@ -295,12 +335,12 @@ class SessionGuardMod(loader.Module):
     def _is_session_path(self, path: str) -> bool:
         return _is_session_path(path, self._sessions_dir)
 
-    def _attribute(self) -> typing.Optional[typing.Tuple[str, str, int, str]]:
+    def _attribute(self) -> typing.Optional[typing.Tuple[str, typing.Optional[str], int, str]]:
         return _attribute(self._core_dir or _STATE["core_dir"])
 
     def _check_access(
         self, path: str
-    ) -> typing.Optional[typing.Tuple[str, str, int, str]]:
+    ) -> typing.Optional[typing.Tuple[str, typing.Optional[str], int, str]]:
         """Path matched a session file — attribute it or let it through."""
         if getattr(self._local, "busy", False):
             return None
@@ -334,12 +374,14 @@ class SessionGuardMod(loader.Module):
         # leave a loud trace so the owner sees it in logs.
         logger.warning("SessionGuard trip with no event loop (read was blocked)")
 
-    async def _quarantine(self, classname: str, filepath: str, evidence: str):
+    async def _quarantine(
+        self, classname: str, filepath: typing.Optional[str], evidence: str
+    ):
         quarantined = False
         if self.config["auto_quarantine"]:
             self._local.busy = True
             try:
-                if os.path.isfile(filepath):
+                if filepath and os.path.isfile(filepath):
                     with contextlib.suppress(Exception):
                         os.makedirs(self._quarantine_dir, exist_ok=True)
                     dst = os.path.join(
