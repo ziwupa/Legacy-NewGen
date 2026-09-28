@@ -64,9 +64,6 @@ _SCAN_DESTRUCTIVE = (
 # Score at which a scanned module is quarantined outright.
 _QUARANTINE_SCORE = 5
 
-# How often loaded modules are re-scanned for theft patterns.
-_RESCAN_INTERVAL = 600
-
 
 def _normalize_path(file: typing.Any) -> typing.Optional[str]:
     if isinstance(file, int):
@@ -81,6 +78,151 @@ def _normalize_path(file: typing.Any) -> typing.Optional[str]:
     if not isinstance(file, str):
         return None
     return file
+
+
+# Bound late in SessionGuardMod.client_ready. Before that (e.g. a stealer
+# running at import time) trips are still blocked, just without quarantine.
+_STATE = {
+    "installed": False,
+    "mod": None,
+    "core_dir": os.path.abspath(utils.get_base_dir()),
+}
+
+
+def _is_session_path(path: str, sessions_dir: str = "") -> bool:
+    """Whether `path` points at a Telegram session file worth stealing."""
+    try:
+        abs_path = os.path.abspath(path)
+    except Exception:
+        return False
+
+    if sessions_dir and abs_path.startswith(sessions_dir + os.sep):
+        return abs_path.endswith(".session")
+
+    name = os.path.basename(abs_path)
+    parts = abs_path.split(os.sep)
+    if name.endswith(".session") and "sessions" in parts:
+        return True
+    if re.match(r"^(legacy|ratko|heroku)-.*\.session$", name):
+        return True
+    return False
+
+
+def _attribute(core_dir: str) -> typing.Optional[typing.Tuple[str, str, int, str]]:
+    """Nearest externally-loaded module in the call stack, if any."""
+    for frame_info in inspect.stack(0):
+        filename = frame_info.filename or ""
+        if filename.startswith("<") and filename.endswith(">"):
+            continue
+        try:
+            abs_name = os.path.abspath(filename)
+        except Exception:
+            continue
+        if core_dir and abs_name.startswith(core_dir + os.sep):
+            continue
+        if "site-packages" in abs_name.split(os.sep):
+            continue
+        match = _EXTERNAL_FILE.match(os.path.basename(abs_name))
+        if match:
+            return (
+                match.group(1),
+                abs_name,
+                frame_info.lineno,
+                frame_info.function,
+            )
+    return None
+
+
+def _check_access(
+    path: str, sessions_dir: str = ""
+) -> typing.Optional[typing.Tuple[str, str, int, str]]:
+    if not _is_session_path(path, sessions_dir):
+        return None
+    return _attribute(_STATE["core_dir"])
+
+
+def _guarded_open(file, *args, **kwargs):
+    path = _normalize_path(file)
+    if path is not None:
+        mod = _STATE["mod"]
+        if (mod is None or mod._guard_on()) and _check_access(
+            path, mod._sessions_dir if mod is not None else ""
+        ) is not None:
+            culprit = _check_access(
+                path, mod._sessions_dir if mod is not None else ""
+            )
+            if mod is not None:
+                mod._on_trip(*culprit, path)
+            logger.warning(
+                "SessionGuard: blocked session read with no instance bound (%s)", path
+            )
+            raise PermissionError(f"SessionGuard: reading {path} is not allowed")
+    return _REAL_OPEN(file, *args, **kwargs)
+
+
+def _guarded_os_open(path, flags, *args, **kwargs):
+    norm = _normalize_path(path)
+    if norm is not None:
+        mod = _STATE["mod"]
+        if (mod is None or mod._guard_on()) and _check_access(
+            norm, mod._sessions_dir if mod is not None else ""
+        ) is not None:
+            culprit = _check_access(
+                norm, mod._sessions_dir if mod is not None else ""
+            )
+            if mod is not None:
+                mod._on_trip(*culprit, norm)
+            logger.warning(
+                "SessionGuard: blocked session read with no instance bound (%s)", norm
+            )
+            raise PermissionError(f"SessionGuard: reading {norm} is not allowed")
+    return _REAL_OS_OPEN(path, flags, *args, **kwargs)
+
+
+def _guarded_sqlite_connect(database=None, *args, **kwargs):
+    norm = _normalize_path(database)
+    if norm is not None:
+        mod = _STATE["mod"]
+        if (mod is None or mod._guard_on()) and _check_access(
+            norm, mod._sessions_dir if mod is not None else ""
+        ) is not None:
+            culprit = _check_access(
+                norm, mod._sessions_dir if mod is not None else ""
+            )
+            if mod is not None:
+                mod._on_trip(*culprit, norm)
+            logger.warning(
+                "SessionGuard: blocked session read with no instance bound (%s)", norm
+            )
+            raise PermissionError(f"SessionGuard: reading {norm} is not allowed")
+    return _REAL_SQLITE_CONNECT(database, *args, **kwargs)
+
+
+def _install_global_wrappers():
+    if _STATE["installed"]:
+        return
+    builtins.open = _guarded_open
+    io.open = _guarded_open
+    os.open = _guarded_os_open
+    sqlite3.connect = _guarded_sqlite_connect
+    _STATE["installed"] = True
+
+
+def _remove_global_wrappers():
+    if not _STATE["installed"]:
+        return
+    builtins.open = _REAL_OPEN
+    io.open = _REAL_IO_OPEN
+    os.open = _REAL_OS_OPEN
+    sqlite3.connect = _REAL_SQLITE_CONNECT
+    _STATE["installed"] = False
+    _STATE["mod"] = None
+
+
+try:
+    _install_global_wrappers()
+except Exception:
+    logger.debug("SessionGuard: global tripwire install failed", exc_info=True)
 
 
 @loader.tds
@@ -129,54 +271,20 @@ class SessionGuardMod(loader.Module):
         except RuntimeError:
             self._loop = None
 
-        self._install_wrappers()
-
-    def _install_wrappers(self):
-        if self._installed:
-            return
-
-        mod = self
-
-        def _guarded_open(file, *args, **kwargs):
-            path = _normalize_path(file)
-            if path is not None:
-                culprit = mod._check_access(path) if mod._guard_on() else None
-                if culprit is not None:
-                    mod._on_trip(*culprit, path)
-            return _REAL_OPEN(file, *args, **kwargs)
-
-        def _guarded_os_open(path, flags, *args, **kwargs):
-            norm = _normalize_path(path)
-            if norm is not None:
-                culprit = mod._check_access(norm) if mod._guard_on() else None
-                if culprit is not None:
-                    mod._on_trip(*culprit, norm)
-            return _REAL_OS_OPEN(path, flags, *args, **kwargs)
-
-        def _guarded_sqlite_connect(database=None, *args, **kwargs):
-            norm = _normalize_path(database)
-            if norm is not None:
-                culprit = mod._check_access(norm) if mod._guard_on() else None
-                if culprit is not None:
-                    mod._on_trip(*culprit, norm)
-            return _REAL_SQLITE_CONNECT(database, *args, **kwargs)
-
-        builtins.open = _guarded_open
-        io.open = _guarded_open
-        os.open = _guarded_os_open
-        sqlite3.connect = _guarded_sqlite_connect
+        # Bind this instance to the tripwires installed at import time, so
+        # trips schedule quarantine and alerts instead of just blocking.
+        _STATE["mod"] = self
+        _STATE["core_dir"] = self._core_dir = os.path.abspath(os.path.join(base))
+        if not _STATE["installed"]:
+            _install_global_wrappers()
         self._installed = True
-        logger.debug("SessionGuard file tripwires installed")
+        logger.debug("SessionGuard bound to tripwires")
 
     async def on_unload(self):
-        if not self._installed:
-            return
-        builtins.open = _REAL_OPEN
-        io.open = _REAL_IO_OPEN
-        os.open = _REAL_OS_OPEN
-        sqlite3.connect = _REAL_SQLITE_CONNECT
-        self._installed = False
-        logger.debug("SessionGuard file tripwires removed")
+        # Core modules are not unloadable in practice; unbind anyway so a
+        # forced reload never leaves stale wrappers behind.
+        if _STATE.get("mod") is self:
+            _STATE["mod"] = None
 
     def _guard_on(self) -> bool:
         try:
@@ -185,52 +293,10 @@ class SessionGuardMod(loader.Module):
             return True
 
     def _is_session_path(self, path: str) -> bool:
-        """Whether `path` points at a Telegram session file worth stealing."""
-        try:
-            abs_path = os.path.abspath(path)
-        except Exception:
-            return False
-
-        if self._sessions_dir and abs_path.startswith(self._sessions_dir + os.sep):
-            return abs_path.endswith(".session")
-
-        name = os.path.basename(abs_path)
-        parts = abs_path.split(os.sep)
-        if name.endswith(".session") and "sessions" in parts:
-            return True
-        if re.match(r"^(legacy|ratko|heroku)-.*\.session$", name):
-            return True
-        return False
+        return _is_session_path(path, self._sessions_dir)
 
     def _attribute(self) -> typing.Optional[typing.Tuple[str, str, int, str]]:
-        """Find the nearest externally-loaded module in the call stack.
-
-        Returns (classname, filepath, lineno, funcname) or None when the
-        access comes from core code, stdlib, or eval (owner) context.
-        """
-        for frame_info in inspect.stack(0):
-            filename = frame_info.filename or ""
-            if filename.startswith("<") and filename.endswith(">"):
-                # <string>, <frozen ...> — look further out for the caller
-                # that exec'd it instead of blaming thin air.
-                continue
-            try:
-                abs_name = os.path.abspath(filename)
-            except Exception:
-                continue
-            if self._core_dir and abs_name.startswith(self._core_dir + os.sep):
-                continue
-            if "site-packages" in abs_name.split(os.sep):
-                continue
-            match = _EXTERNAL_FILE.match(os.path.basename(abs_name))
-            if match:
-                return (
-                    match.group(1),
-                    abs_name,
-                    frame_info.lineno,
-                    frame_info.function,
-                )
-        return None
+        return _attribute(self._core_dir or _STATE["core_dir"])
 
     def _check_access(
         self, path: str
@@ -452,15 +518,6 @@ class SessionGuardMod(loader.Module):
             if self._guard_on():
                 await self._quarantine(classname, full, "source-scan: " + ", ".join(tokens))
         return hits
-
-    @loader.loop(interval=_RESCAN_INTERVAL, autostart=True)
-    async def rescan_loop(self):
-        if not self._guard_on():
-            return
-        try:
-            await self.rescan()
-        except Exception:
-            logger.exception("SessionGuard rescan failed")
 
     @loader.command()
     async def sessionguard(self, message):
