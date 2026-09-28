@@ -187,20 +187,25 @@ class GitNotifyMod(loader.Module):
             f" 👤 {utils.escape_html(author)}"
         )
 
-    async def _fmt_push(self, repo: str, branch: str, base: str, commits: list) -> str:
-        """Reference-style push digest with per-commit details (files, diff)."""
+    async def _fmt_push(
+        self, repo: str, display: str, branch: str, base: str, commits: list
+    ) -> list:
+        """Reference-style push digest: header message first, then one
+        message per commit (body as quote, files, diff)."""
         head = commits[0].get("sha", "") if commits else ""
         compare = f"https://github.com/{repo}/compare/{base[:12]}...{head[:12]}"
-        text = self.strings("push").format(
-            repo,
-            f"https://github.com/{repo}",
-            branch or "default",
-            len(commits),
-            compare,
-        )
+        messages = [
+            self.strings("push").format(
+                f"https://github.com/{repo}",
+                display,
+                branch,
+                len(commits),
+                compare,
+            )
+        ]
         detail_cap = 3
         for commit in commits[:detail_cap]:
-            text += await self._fmt_commit_full(repo, commit.get("sha", ""))
+            messages.append(await self._fmt_commit_full(repo, commit.get("sha", "")))
         if len(commits) > detail_cap:
             rest = []
             for commit in commits[detail_cap:10]:
@@ -222,10 +227,10 @@ class GitNotifyMod(loader.Module):
                         str(author),
                     )
                 )
-            text += "\n".join(rest)
+            messages.append("\n".join(rest))
             if len(commits) > 10:
-                text += self.strings("more").format(len(commits) - 10)
-        return text
+                messages[-1] += self.strings("more").format(len(commits) - 10)
+        return [text for text in messages if text.strip()]
 
     async def _fmt_commit_full(self, repo: str, sha: str) -> str:
         """One commit block: header, full message, files, diff stats."""
@@ -297,17 +302,21 @@ class GitNotifyMod(loader.Module):
         if full in repos:
             await utils.answer(message, self.strings("already").format(full))
             return
-        status, _ = await self._api(f"/repos/{full}")
+        status, repo_info = await self._api(f"/repos/{full}")
         if status == 404:
             await utils.answer(message, self.strings("no_repo").format(full))
             return
         if status == 401:
             await utils.answer(message, self.strings("token_bad"))
             return
-        if status != 200:
+        if status != 200 or not isinstance(repo_info, dict):
             await utils.answer(message, self.strings("gh_error").format(status))
             return
-        repos[full] = {"branch": branch}
+        repos[full] = {
+            "branch": branch,
+            "display": repo_info.get("full_name", full),
+            "default_branch": repo_info.get("default_branch", "main"),
+        }
         self._save_repos(repos)
         await self._baseline(full, repos[full])
         await utils.answer(
@@ -491,9 +500,25 @@ class GitNotifyMod(loader.Module):
         changed = False
 
         if self.config["track_commits"]:
+            # Display name and default branch, backfilled for repos added
+            # before they were stored.
+            display = info.get("display") or full
+            default_branch = info.get("default_branch") or ""
+            if "display" not in info or "default_branch" not in info:
+                status, repo_info = await self._api(f"/repos/{full}")
+                if status == 200 and isinstance(repo_info, dict):
+                    display = repo_info.get("full_name", display)
+                    default_branch = repo_info.get("default_branch", default_branch)
+                    repos = self._repos()
+                    if full in repos:
+                        repos[full]["display"] = display
+                        repos[full]["default_branch"] = default_branch
+                        self._save_repos(repos)
+            branch = info.get("branch") or ""
+            watch = branch or default_branch
             path = f"/repos/{full}/commits?per_page={_PAGE}"
-            if branch:
-                path += f"&sha={branch}"
+            if watch:
+                path += f"&sha={watch}"
             status, data = await self._api(path)
             if status == 200 and isinstance(data, list) and data:
                 fresh = []
@@ -503,9 +528,10 @@ class GitNotifyMod(loader.Module):
                     fresh.append(commit)
                 if fresh and state.get("sha"):
                     fresh = list(reversed(fresh))
-                    await self._send_all(
-                        await self._fmt_push(full, branch, state["sha"], fresh)
-                    )
+                    for text in await self._fmt_push(
+                        full, display, watch or "default", state["sha"], fresh
+                    ):
+                        await self._send_all(text)
                 if not state.get("sha"):
                     # No baseline yet (added before baselines existed).
                     pass

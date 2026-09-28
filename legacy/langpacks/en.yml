@@ -720,9 +720,10 @@ github_notify:
   test_sent: "✅ <b>Test sent.</b> If it didn't arrive, check the target chat."
   more: "
 <i>…and {} more</i>"
-  push: "📏 On <code>{}</code> (<a href=\"{}\">{}</a>) new commits!
-{} commits pushed.
-Compare changes (<a href=\"{}\">compare</a>)"
+  push: |
+    📏 On <a href="{}">{}:{}</a> new commits!
+    {} commits pushed.
+    <a href="{}">Compare changes</a>
   commit_head: "
 
 Commit #{} ({}) by {}"
