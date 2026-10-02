@@ -139,6 +139,10 @@ loaded_modules
 legacy/debug_modules
 *.session
 *.session-journal
+*.session.migrated
+*.lsession
+legacy.key
+sessions/
 database-*.json
 *.swp
 .setup_complete
