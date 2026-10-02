@@ -4,6 +4,7 @@
 # You can redistribute it and/or modify it under the terms of the GNU AGPLv3
 # 🔑 https://www.gnu.org/licenses/agpl-3.0.html
 
+import contextlib
 import logging
 import re
 import string
@@ -30,6 +31,11 @@ class InlineStuff(loader.Module):
 
     def reset_state(self, user_id):
         self.inline.fsm.pop(str(user_id), None)
+
+    @loader.watcher()
+    async def reply_input_watcher(self, message):
+        with contextlib.suppress(Exception):
+            return await self.inline._reply_input_handler(message)
 
     @loader.watcher(
         "out",

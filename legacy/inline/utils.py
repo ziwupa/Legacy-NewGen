@@ -318,6 +318,7 @@ class Utils(InlineUnit):
         text: str | None = None,
         reply_markup: LegacyReplyMarkup | None = None,
         *,
+        rich_html: typing.Any = None,
         photo: str | None = None,
         file: str | None = None,
         video: str | None = None,
@@ -352,6 +353,29 @@ class Utils(InlineUnit):
         :return: Status of edit
         """
         reply_markup = self._validate_markup(reply_markup) or []
+
+        screen = None
+        rich_source = None
+        if rich_html is not None:
+            from .screens import Screen
+
+            if isinstance(rich_html, Screen):
+                screen = rich_html
+                if not reply_markup:
+                    reply_markup = screen.markup
+                rich_source, rich_html = screen.source, screen.html()
+            elif not isinstance(rich_html, str):
+                logger.error(
+                    "Invalid type for `rich_html`. Expected `str` or `Screen`, got `%s`",
+                    type(rich_html),
+                )
+                return False
+
+            if text is not None:
+                logger.error("`rich_html` is mutually exclusive with `text`")
+                return False
+
+            text = rich_html
 
         if text is not None and not isinstance(text, str):
             logger.error(
@@ -401,6 +425,11 @@ class Utils(InlineUnit):
 
             if isinstance(always_allow, list):
                 pending_unit_update["always_allow"] = always_allow
+
+            if screen is not None:
+                pending_unit_update["rich_source"] = rich_source
+                pending_unit_update["rich_html"] = rich_html
+                self._bind_screen(unit_id, screen)
         else:
             unit = {}
 
@@ -524,7 +553,7 @@ class Utils(InlineUnit):
                 if query:
                     with contextlib.suppress(Exception):
                         await query.answer()
-                return False
+                return await self._retry_plain(unit_id, utils.get_kwargs())
             else:
                 commit_unit_update()
                 return True
@@ -552,10 +581,23 @@ class Utils(InlineUnit):
                 await query.answer(
                     "I should have edited some message, but it is deleted :("
                 )
-            return False
+            return await self._retry_plain(unit_id, utils.get_kwargs())
         else:
             commit_unit_update()
             return True
+
+    async def _retry_plain(
+        self: "InlineManager", unit_id: str | None, kwargs: dict
+    ) -> bool:
+        """Re-runs a failed rich edit as plain text, once."""
+        if unit_id and self._rich_fallback(unit_id):
+            unit = self._units.get(unit_id, {})
+            kwargs = dict(kwargs)
+            kwargs.pop("rich_html", None)
+            kwargs["text"] = unit.get("text")
+            kwargs["reply_markup"] = unit.get("buttons")
+            return await self._edit_unit(**kwargs)
+        return False
 
     async def _delete_unit_message(
         self: "InlineManager",

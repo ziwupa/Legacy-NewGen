@@ -66,6 +66,7 @@ from .gallery import Gallery
 from .invoice import Invoice
 from .list import List
 from .query_gallery import QueryGallery
+from .screens import Screens
 from .tl import TelethonBot, web_document
 from .token_obtainment import TokenObtainment
 from .utils import Utils
@@ -134,6 +135,7 @@ class InlineManager(
     QueryGallery,
     List,
     BotPM,
+    Screens,
 ):
     """
     Inline buttons, galleries and other Telethon bot stuff

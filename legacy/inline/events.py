@@ -241,7 +241,9 @@ class Events(InlineUnit):
                     continue
 
         for unit_id, unit in self._units.copy().items():
-            for button in utils.array_sum(unit.get("buttons", [])):
+            for button in utils.array_sum(unit.get("buttons", [])) + list(
+                unit.get("rich_buttons") or []
+            ):
                 if not isinstance(button, dict):
                     logger.warning(
                         "Can't process update, because of corrupted button: %s",

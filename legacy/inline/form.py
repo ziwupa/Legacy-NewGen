@@ -77,10 +77,14 @@ class Form(InlineUnit):
         location: str | None = None,
         audio: dict | str | None = None,
         silent: bool = False,
+        rich_html: typing.Any = None,
     ) -> InlineMessage | bool:
         """
         Send inline form to chat
         :param text: Content of inline form. HTML markdown supported
+        :param rich_html: Rich screen (`str`) or `Screen` with in-text buttons.
+                          Falls back to plain text if Telegram declines it.
+                          Mutually exclusive with `text`
         :param message: Where to send inline. Can be either `Message` or `int`
         :param reply_markup: List of buttons to insert in markup. List of dicts with keys: text, callback
         :param force_me: Either this form buttons must be pressed only by owner scope or no
@@ -287,6 +291,30 @@ class Form(InlineUnit):
 
         perms_map = None if manual_security else self._find_caller_sec_map()
 
+        screen = None
+        if rich_html is not None:
+            from .screens import Screen
+
+            if isinstance(rich_html, Screen):
+                screen = rich_html
+                if reply_markup is None:
+                    reply_markup = screen.markup
+                rich_source, rich_html = screen.source, screen.html()
+            elif isinstance(rich_html, str):
+                rich_source = rich_html
+            else:
+                logger.error(
+                    "Invalid type for `rich_html`. Expected `str` or `Screen`, got `%s`",
+                    type(rich_html),
+                )
+                return False
+
+            if text:
+                logger.error("`rich_html` is mutually exclusive with `text`")
+                return False
+
+            text = rich_html
+
         if not reply_markup and not ttl:
             logger.debug("Patching form reply markup with empty data")
             base_reply_markup = copy.deepcopy(reply_markup) or None
@@ -333,6 +361,11 @@ class Form(InlineUnit):
             **({"always_allow": always_allow} if always_allow else {}),
         }
 
+        if screen is not None:
+            self._units[unit_id]["rich_source"] = rich_source
+            self._units[unit_id]["rich_html"] = rich_html
+            self._bind_screen(unit_id, screen)
+
         async def answer(msg: str):
             nonlocal message
             if isinstance(message, Message):
@@ -343,11 +376,26 @@ class Form(InlineUnit):
             else:
                 await self._client.send_message(message, msg)
 
+        invoke_error = None
+        invoke_tb = ""
         try:
             m = await self._invoke_unit(unit_id, message)
         except ChatSendInlineForbiddenError:
             await answer(self.translator.getkey("inline.inline403"))
         except Exception as e:
+            invoke_error = e
+            invoke_tb = traceback.format_exc()
+            if screen is not None and self._rich_fallback(unit_id):
+                text = self._units[unit_id].get("text", text)
+                reply_markup = self._units[unit_id].get("buttons", reply_markup)
+                try:
+                    m = await self._invoke_unit(unit_id, message)
+                    invoke_error = None
+                except Exception as e2:
+                    invoke_error = e2
+                    invoke_tb = traceback.format_exc()
+        if invoke_error is not None:
+            e = invoke_error
             logger.exception("Can't send form")
 
             del self._units[unit_id]
@@ -366,9 +414,7 @@ class Form(InlineUnit):
             else:
                 await answer(
                     self.translator.getkey("inline.invoke_failed_logs").format(
-                        utils.escape_html(
-                            "\n".join(traceback.format_exc().splitlines()[1:])
-                        )
+                        utils.escape_html("\n".join(invoke_tb.splitlines()[1:]))
                     )
                     if self._db.get(main.__name__, "inlinelogs", True)
                     else self.translator.getkey("inline.invoke_failed")
