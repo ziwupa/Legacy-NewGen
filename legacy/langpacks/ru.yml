@@ -468,14 +468,6 @@ help:
 
 legacy_info:
   owner: "Владелец"
-  title: "{} {} {}"
-  row_owner: "Владелец"
-  row_branch: "Ветка"
-  row_prefix: "Префикс"
-  row_uptime: "Аптайм"
-  row_cpu: "ЦПУ"
-  row_ram: "ОЗУ"
-  row_platform: "Платформа"
   version: "Версия"
   build: "Сборка"
   prefix: "Префикс"

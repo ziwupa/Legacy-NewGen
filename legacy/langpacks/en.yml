@@ -484,14 +484,6 @@ help:
 
 legacy_info:
   name: "LegacyInfo"
-  title: "{} {} {}"
-  row_owner: "Owner"
-  row_branch: "Branch"
-  row_prefix: "Prefix"
-  row_uptime: "Uptime"
-  row_cpu: "CPU"
-  row_ram: "RAM"
-  row_platform: "Platform"
   owner: "Owner"
   version: "Version"
   build: "Build"

@@ -593,6 +593,14 @@ async def answer(
     elif "reply_to" in kwargs:
         kwargs.pop("reply_to")
 
+    if "rich" in kwargs:
+        # True rich message (headings, tables) via layer 229; the server
+        # renders it, so there is no text to parse into entities here.
+        rich = kwargs.pop("rich")
+        if edit:
+            return await message.edit("", rich=rich, **kwargs)
+        return await message.respond("", rich=rich, **kwargs)
+
     parse_mode = legacytl.utils.sanitize_parse_mode(
         kwargs.pop(
             "parse_mode",

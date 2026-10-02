@@ -12,6 +12,7 @@ import distro
 import git
 import legacytl
 from legacytl.types import InputMediaWebPage
+from legacytl.tl.types import InputRichMessageHTML
 from legacytl.utils import get_display_name
 
 from .. import loader, utils, version
@@ -86,31 +87,6 @@ class LegacyInfoMod(loader.Module):
                 else "🌙 <b>Legacy newgen</b>"
             ),
         }
-
-    def _render_screen(self, d: dict):
-        screen = self.inline.screen()
-        screen.add(
-            screen.icon("core")
-            + " "
-            + self.strings("title").format(d["label"], d["version"], d["build"])
-        )
-        screen.add(
-            screen.table(
-                [
-                    [self.strings("row_owner"), d["me"]],
-                    [
-                        self.strings("row_branch"),
-                        f"<code>{d['branch']}</code><br>{d['upd']}",
-                    ],
-                    [self.strings("row_prefix"), d["prefix"]],
-                    [self.strings("row_uptime"), f"<code>{d['uptime']}</code>"],
-                    [self.strings("row_cpu"), f"<code>{d['cpu']}</code>"],
-                    [self.strings("row_ram"), f"<code>{d['ram']}</code>"],
-                    [self.strings("row_platform"), d["platform"]],
-                ]
-            )
-        )
-        return screen
 
     async def _render_info(self, args: list, custom_prefix: str) -> str:
         try:
@@ -205,6 +181,24 @@ class LegacyInfoMod(loader.Module):
             )
         )
 
+    def _render_rich(self, d: dict) -> str:
+        header = (
+            f"{d['label']} <i>{d['version']}</i> {d['build']}"
+            f"<br>👾 Owner: {d['me']}"
+        )
+        rows = "".join(
+            f"<tr><td>{name}</td><td>{value}</td></tr>"
+            for name, value in [
+                ("🌱 Branch", f"<code>{d['branch']}</code><br>{d['upd']}"),
+                ("❓ Prefix", d["prefix"]),
+                ("⏰ Uptime", f"<code>{d['uptime']}</code>"),
+                ("⚡️ CPU", f"<code>{d['cpu']}</code>"),
+                ("💼 RAM", f"<code>{d['ram']}</code>"),
+                ("📱 Platform", d["platform"]),
+            ]
+        )
+        return f"{header}<br><table>{rows}</table>"
+
     @loader.command()
     async def infocmd(self, message):
         args = utils.get_args(message)
@@ -225,31 +219,30 @@ class LegacyInfoMod(loader.Module):
             return
 
         d = await self._collect_info(args, custom_prefix)
-        screen = self._render_screen(d)
-        sent = False
-        if self.inline.init_complete:
+        if getattr(self._client.legacy_me, "premium", False):
+            html = self._render_rich(d)
+            if media:
+                html = f'<img src="{media}"/>' + f"<br>{html}"
             try:
-                if media:
-                    sent = await self.inline.form(
-                        "", message, rich_html=screen, photo=media
-                    )
-                else:
-                    sent = await self.inline.form("", message, rich_html=screen)
-            except Exception:
-                logger.exception("Rich info failed, falling back to plain")
-                sent = False
-        if not sent:
-            if self.config["media_quote"]:
                 await utils.answer(
                     message,
-                    await self._render_info(args, custom_prefix),
-                    file=InputMediaWebPage(media, optional=True) if media else None,
-                    invert_media=True,
+                    "",
+                    rich=InputRichMessage(html),
                 )
-            else:
-                await utils.answer(
-                    message, await self._render_info(args, custom_prefix), file=media
-                )
+                return
+            except Exception:
+                logger.debug("Rich info failed, falling back to plain", exc_info=True)
+        if self.config["media_quote"]:
+            await utils.answer(
+                message,
+                await self._render_info(args, custom_prefix),
+                file=InputMediaWebPage(media, optional=True) if media else None,
+                invert_media=True,
+            )
+        else:
+            await utils.answer(
+                message, await self._render_info(args, custom_prefix), file=media
+            )
 
     @loader.command()
     async def ubinfo(self, message):
