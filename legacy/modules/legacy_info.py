@@ -219,19 +219,18 @@ class LegacyInfoMod(loader.Module):
             return
 
         d = await self._collect_info(args, custom_prefix)
-        if getattr(self._client.legacy_me, "premium", False):
-            html = self._render_rich(d)
-            if media:
-                html = f'<img src="{media}"/>' + f"<br>{html}"
-            try:
-                await utils.answer(
-                    message,
-                    "",
-                    rich=InputRichMessage(html),
-                )
-                return
-            except Exception:
-                logger.debug("Rich info failed, falling back to plain", exc_info=True)
+        html = self._render_rich(d)
+        if media:
+            html = f'<img src="{media}"/>' + f"<br>{html}"
+        try:
+            await utils.answer(
+                message,
+                "",
+                rich=InputRichMessageHTML(html=html),
+            )
+            return
+        except Exception:
+            logger.debug("Rich info failed, falling back to plain", exc_info=True)
         if self.config["media_quote"]:
             await utils.answer(
                 message,
