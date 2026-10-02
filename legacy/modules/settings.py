@@ -271,7 +271,7 @@ class CoreMod(loader.Module):
     @loader.command()
     async def cleardb(self, message: Message):
         _screen = self.inline.screen()
-        _screen.add(self.strings["confirm_cleardb"])
+        _screen.add(_screen.icon("warning") + " " + self.strings["confirm_cleardb"])
         _screen.keyboard(
             [
                 {

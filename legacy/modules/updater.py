@@ -53,7 +53,9 @@ class UpdaterMod(loader.Module):
         args = utils.get_args(message)
         try:
             _screen = self.inline.screen()
-            _screen.add(self.strings["restart_confirm"])
+            _screen.add(
+                _screen.icon("reset") + " " + self.strings["restart_confirm"]
+            )
             _screen.keyboard(
                 [
                     {
@@ -267,11 +269,15 @@ class UpdaterMod(loader.Module):
             ).hexsha
             _screen = self.inline.screen()
             _screen.add(
-                self.strings("update_confirm").format(
-                    current, current[:8], upcoming, upcoming[:8]
+                _screen.icon("settings")
+                + " "
+                + (
+                    self.strings("update_confirm").format(
+                        current, current[:8], upcoming, upcoming[:8]
+                    )
+                    if upcoming != current
+                    else self.strings("no_update")
                 )
-                if upcoming != current
-                else self.strings("no_update")
             )
             _screen.keyboard(
                 [
@@ -367,7 +373,11 @@ class UpdaterMod(loader.Module):
             commits.pop(0)
 
             _screen = self.inline.screen()
-            _screen.add(self.strings("rollback_no_args"))
+            _screen.add(
+                _screen.icon("list")
+                + " "
+                + self.strings("rollback_no_args")
+            )
             _screen.keyboard(
                 *[
                     [

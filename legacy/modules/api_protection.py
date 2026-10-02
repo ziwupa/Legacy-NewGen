@@ -487,7 +487,7 @@ class APIRatelimiterMod(loader.Module):
     @loader.command()
     async def api_fw_protection(self, message: Message):
         _screen = self.inline.screen()
-        _screen.add(self.strings("u_sure"))
+        _screen.add(_screen.icon("warning") + " " + self.strings("u_sure"))
         _screen.keyboard(
             [
                 {"text": self.strings("btn_no"), "action": "close"},

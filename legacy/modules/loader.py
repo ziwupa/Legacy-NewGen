@@ -385,7 +385,7 @@ class LoaderMod(loader.Module):
                 message = await message.respond("🌙", reply_to=utils.get_topic(message))
 
             _screen = self.inline.screen()
-            _screen.add(self.strings("module_fs"))
+            _screen.add(_screen.icon("module") + " " + self.strings("module_fs"))
             _screen.keyboard(
                 [
                     {
@@ -1105,7 +1105,7 @@ class LoaderMod(loader.Module):
     @loader.command()
     async def clearmodules(self, message: Message):
         _screen = self.inline.screen()
-        _screen.add(self.strings("confirm_clearmodules"))
+        _screen.add(_screen.icon("remove") + " " + self.strings("confirm_clearmodules"))
         _screen.keyboard(
             [
                 {

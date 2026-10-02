@@ -258,7 +258,7 @@ class TestMod(loader.Module):
         if not isinstance(lvl, int):
             try:
                 _screen = self.inline.screen()
-                _screen.add(self.strings("choose_loglevel"))
+                _screen.add(_screen.icon("list") + " " + self.strings("choose_loglevel"))
                 _screen.keyboard(
                     *utils.chunks(
                         [
@@ -319,7 +319,7 @@ class TestMod(loader.Module):
                     raise
 
                 cfg = self.inline.screen()
-                cfg.add(self.strings("confidential").format(named_lvl))
+                cfg.add(cfg.icon("secret") + " " + self.strings("confidential").format(named_lvl))
                 cfg.keyboard(
                     [
                         {

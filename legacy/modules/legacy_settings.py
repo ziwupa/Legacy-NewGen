@@ -153,7 +153,7 @@ class LegacySettingsMod(loader.Module):
     @loader.command()
     async def uninstall_legacy(self, message: Message):
         _screen = self.inline.screen()
-        _screen.add(self.strings("deauth_confirm"))
+        _screen.add(_screen.icon("warning") + " " + self.strings("deauth_confirm"))
         _screen.keyboard(
             [
                 {
@@ -681,7 +681,7 @@ class LegacySettingsMod(loader.Module):
     @loader.command()
     async def settings(self, message: Message):
         _screen = self.inline.screen()
-        _screen.add(self.strings("inline_settings"))
+        _screen.add(_screen.icon("settings") + " " + self.strings("inline_settings"))
         _screen.keyboard(*self._get_settings_markup())
         await self.inline.form("", message, rich_html=_screen)
 
@@ -703,7 +703,7 @@ class LegacySettingsMod(loader.Module):
             try:
                 _screen = self.inline.screen()
                 _screen.add(
-                    self.strings("privacy_leak_nowarn").format(self._client.tg_id)
+                    _screen.icon("lock") + " " + self.strings("privacy_leak_nowarn").format(self._client.tg_id)
                 )
                 _screen.keyboard(
                     [
@@ -756,7 +756,7 @@ class LegacySettingsMod(loader.Module):
             )
         else:
             _screen = self.inline.screen()
-            _screen.add(self.strings("opening_tunnel"))
+            _screen.add(_screen.icon("eye") + " " + self.strings("opening_tunnel"))
             _screen.keyboard([{"text": "🕔 Wait...", "data": "empty"}])
             form = await self.inline.form(
                 "",

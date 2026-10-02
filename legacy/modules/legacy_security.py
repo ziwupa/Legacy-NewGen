@@ -462,14 +462,18 @@ class LegacySecurityMod(loader.Module):
 
         if not args:
             _screen = self.inline.screen()
-            _screen.add(self.strings("global"))
+            _screen.add(_screen.icon("lock") + " " + self.strings("global"))
             _screen.keyboard(*self._build_markup_global())
             await self.inline.form("", message, rich_html=_screen, ttl=5 * 60)
             return
 
         _screen = self.inline.screen()
         _screen.add(
-            self.strings("permissions").format(self.get_prefix(message.sender_id), args)
+            _screen.icon("user")
+            + " "
+            + self.strings("permissions").format(
+                self.get_prefix(message.sender_id), args
+            )
         )
         _screen.keyboard(*self._build_markup(self.allmodules.commands[args]))
         await self.inline.form("", message, rich_html=_screen, ttl=5 * 60)
@@ -489,7 +493,11 @@ class LegacySecurityMod(loader.Module):
 
         _screen = self.inline.screen()
         _screen.add(
-            self.strings("permissions").format(f"@{self.inline.bot_username} ", args)
+            _screen.icon("bot")
+            + " "
+            + self.strings("permissions").format(
+                f"@{self.inline.bot_username} ", args
+            )
         )
         _screen.keyboard(
             *self._build_markup(
@@ -543,7 +551,9 @@ class LegacySecurityMod(loader.Module):
         if not confirmed:
             _screen = self.inline.screen()
             _screen.add(
-                self.strings("warning").format(
+                _screen.icon("warning")
+                + " "
+                + self.strings("warning").format(
                     user.id,
                     utils.escape_html(get_display_name(user)),
                     group,
@@ -879,7 +889,9 @@ class LegacySecurityMod(loader.Module):
         if len(possible_rules) > 1:
             _screen = self.inline.screen()
             _screen.add(
-                self.strings("multiple_rules").format(
+                _screen.icon("lock")
+                + " "
+                + self.strings("multiple_rules").format(
                     "\n".join(
                         "🛡 <b>{}</b> <code>{}</code>".format(
                             self.strings(rule.split("/")[0]).capitalize(),

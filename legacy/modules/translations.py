@@ -40,7 +40,7 @@ class Translations(loader.Module):
     async def setlang(self, message: Message):
         if not (args := utils.get_args_raw(message)):
             _screen = self.inline.screen()
-            _screen.add(self.strings("choose_language"))
+            _screen.add(_screen.icon("list") + " " + self.strings("choose_language"))
             _screen.keyboard(
                 *utils.chunks(
                     [

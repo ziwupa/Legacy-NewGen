@@ -170,7 +170,9 @@ class InlineStuff(loader.Module):
             try:
                 _screen = self.inline.screen()
                 _screen.add(
-                    self.strings["privacy_leak_nowarn"].format(
+                    _screen.icon("lock")
+                    + " "
+                    + self.strings["privacy_leak_nowarn"].format(
                         f"{self.get_prefix(message.sender_id)}iauth -f"
                     )
                 )
