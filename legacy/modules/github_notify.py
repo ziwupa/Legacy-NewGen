@@ -402,7 +402,7 @@ class GitNotifyMod(loader.Module):
 
     @loader.command()
     async def sendth(self, message: Message):
-        """[clear] - Send GitHub notifications here (works in forum topics)"""
+        """[clear] - Toggle GitHub notifications here (works in forum topics)"""
         args = utils.get_args(message)
         if args and args[0].lower() == "clear":
             self.set("targets", [])
@@ -419,9 +419,19 @@ class GitNotifyMod(loader.Module):
             topic = utils.get_topic(message)
         targets = self._targets()
         entry = {"chat": chat, "topic": topic}
-        if entry not in targets:
-            targets.append(entry)
+        if entry in targets:
+            targets.remove(entry)
             self.set("targets", targets)
+            await utils.answer(
+                message,
+                self.strings("target_removed").format(
+                    utils.escape_html(getattr(entity, "title", None) or str(chat)),
+                    f" (topic {topic})" if topic else "",
+                ),
+            )
+            return
+        targets.append(entry)
+        self.set("targets", targets)
         await utils.answer(
             message,
             self.strings("target_set").format(
