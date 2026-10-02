@@ -10,6 +10,7 @@ import asyncio
 import builtins
 import contextlib
 import copy
+import hashlib
 import importlib
 import importlib.machinery
 import importlib.util
@@ -118,6 +119,207 @@ inline_everyone = security.inline_everyone
 
 async def stop_placeholder() -> bool:
     return True
+
+
+# --- Session-file sandbox (audit-hook level) ---
+#
+# Python-level open() wrappers can be dodged (ctypes, C-accelerated copies,
+# shelling out). sys.addaudithook cannot be removed once installed, so every
+# C-level file touch and every spawned process passes through here. Reads of
+# session material coming from externally loaded modules are denied; core
+# code is never affected.
+
+_EXTERNAL_ORIGIN_PREFIXES = ("<external", "<file", "<string")
+
+_SESSION_AUDIT_INSTALLED = False
+
+# content hash -> module name, for attribution that survives renames
+_MODULE_NAME_BY_HASH: typing.Dict[str, str] = {}
+_MODULE_HASH_BY_MODNAME: typing.Dict[str, str] = {}
+
+# sync callbacks(classname | None, evidence) fired on blocked trips, e.g. so
+# the security module can quarantine the offender and alert the owner
+_SESSION_TRIP_HANDLERS: list = []
+
+# names that must never reach third-party code on disk or in transit
+_SESSION_PATH_SUFFIXES = (".session", ".session-journal", ".lsession")
+_SESSION_KEY_NAMES = ("legacy.key",)
+_SESSION_HINT_TOKENS = (".session", ".lsession", "legacy.key")
+
+
+def _calc_module_hash(source: str) -> str:
+    return hashlib.sha256(source.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def register_session_trip_handler(callback) -> None:
+    """Subscribe to blocked session-access trips (sync callback)."""
+    if callback not in _SESSION_TRIP_HANDLERS:
+        _SESSION_TRIP_HANDLERS.append(callback)
+
+
+def _format_audit_args(args: typing.Any, limit: int = 300) -> str:
+    try:
+        rendered = repr(args)
+    except Exception:
+        return "<unreprable>"
+    if len(rendered) <= limit:
+        return rendered
+    return rendered[: limit - 3] + "..."
+
+
+def _is_external_origin(origin: str) -> bool:
+    if not origin or not isinstance(origin, str):
+        return False
+    if origin.startswith("<core"):
+        return False
+    if origin.startswith(_EXTERNAL_ORIGIN_PREFIXES):
+        return True
+    return "loaded_modules" in origin
+
+
+def _is_external_frame(frame) -> bool:
+    if frame is None:
+        return False
+    spec = frame.f_globals.get("__spec__", None)
+    if spec and getattr(spec, "origin", None):
+        origin = spec.origin
+        if origin and isinstance(origin, str) and _is_external_origin(origin):
+            return True
+    filename = frame.f_globals.get("__file__", "")
+    if filename and isinstance(filename, str):
+        if _is_external_origin(filename) or "loaded_modules" in filename:
+            return True
+    return False
+
+
+def _external_stack_info() -> typing.Tuple[bool, typing.Optional[str], typing.Optional[str]]:
+    frame = sys._getframe()
+    if frame:
+        frame = frame.f_back
+    depth = 0
+    while frame is not None and depth < 50:
+        if _is_external_frame(frame):
+            spec = frame.f_globals.get("__spec__", None)
+            origin = getattr(spec, "origin", None) if spec else None
+            if not origin:
+                origin = frame.f_globals.get("__file__", "")
+            if origin and not isinstance(origin, str):
+                origin = str(origin)
+            return True, origin or None, frame.f_globals.get("__name__", None)
+        frame = frame.f_back
+        depth += 1
+    return False, None, None
+
+
+def _mod_classname(mod_name: typing.Optional[str]) -> typing.Optional[str]:
+    if not mod_name:
+        return None
+    short = mod_name.rsplit(".", 1)[-1]
+    short = re.sub(r"_\d+$", "", short)
+    return short or None
+
+
+def _path_value(value) -> typing.Optional[str]:
+    try:
+        path = os.fspath(value)
+    except Exception:
+        return None
+    if isinstance(path, bytes):
+        try:
+            path = path.decode(errors="ignore")
+        except Exception:
+            return None
+    return path if isinstance(path, str) else None
+
+
+def _is_session_path(value) -> bool:
+    path = _path_value(value)
+    if not path:
+        return False
+    if path.endswith(_SESSION_PATH_SUFFIXES):
+        return True
+    return os.path.basename(path) in _SESSION_KEY_NAMES
+
+
+def _has_session_path(values) -> bool:
+    for value in values:
+        if isinstance(value, (list, tuple, set, frozenset)):
+            if _has_session_path(value):
+                return True
+            continue
+        if _is_session_path(value):
+            return True
+    return False
+
+
+def _has_session_hint(values) -> bool:
+    for value in values:
+        if isinstance(value, (list, tuple, set, frozenset)):
+            if _has_session_hint(value):
+                return True
+            continue
+        if isinstance(value, bytes):
+            try:
+                value = value.decode(errors="ignore")
+            except Exception:
+                continue
+        if isinstance(value, str) and any(
+            token in value for token in _SESSION_HINT_TOKENS
+        ):
+            return True
+    return False
+
+
+def _session_audit_hook(event, args):
+    if not args:
+        return
+    if event.startswith("import") or event.startswith("importlib."):
+        return
+
+    spawns = event.startswith("subprocess.") or event in (
+        "os.system",
+        "os.exec",
+        "os.spawn",
+        "os.posix_spawn",
+    )
+
+    if not _has_session_path(args):
+        if not (spawns and _has_session_hint(args)):
+            return
+
+    has_external, origin, mod_name = _external_stack_info()
+    if not has_external:
+        return
+
+    classname = _mod_classname(mod_name)
+    evidence = f"{event} {_format_audit_args(args)}"
+    logger.warning(
+        "Blocked session file access from external module: name=%s origin=%s %s",
+        classname or "<unknown>",
+        origin or "<unknown>",
+        evidence,
+    )
+    for handler in list(_SESSION_TRIP_HANDLERS):
+        with contextlib.suppress(Exception):
+            handler(classname, evidence)
+    raise PermissionError(
+        "Access to session material is blocked for external modules: "
+        f"name={classname or '<unknown>'} origin={origin or '<unknown>'}"
+    )
+
+
+def _install_session_audit_hook():
+    global _SESSION_AUDIT_INSTALLED
+    if _SESSION_AUDIT_INSTALLED:
+        return
+    sys.addaudithook(_session_audit_hook)
+    _SESSION_AUDIT_INSTALLED = True
+
+
+try:
+    _install_session_audit_hook()
+except Exception:
+    logger.debug("Session audit hook install failed", exc_info=True)
 
 
 VALID_PIP_PACKAGES = re.compile(
@@ -706,6 +908,15 @@ class Modules:
         ret.__origin__ = origin
 
         cls_name = ret.__class__.__name__
+
+        with contextlib.suppress(Exception):
+            source = getattr(getattr(spec, "loader", None), "data", None)
+            if isinstance(source, (bytes, bytearray)):
+                source = bytes(source).decode("utf-8", "ignore")
+            if isinstance(source, str) and source:
+                ret.__module_hash__ = _calc_module_hash(source)
+                _MODULE_HASH_BY_MODNAME[module_name] = ret.__module_hash__
+                _MODULE_NAME_BY_HASH[ret.__module_hash__] = cls_name
 
         if save_fs:
             path = os.path.join(

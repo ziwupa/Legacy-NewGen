@@ -318,7 +318,39 @@ class SessionGuardMod(loader.Module):
         if not _STATE["installed"]:
             _install_global_wrappers()
         self._installed = True
+
+        try:
+            from ..loader import register_session_trip_handler
+
+            register_session_trip_handler(self._on_audit_trip)
+        except Exception:
+            logger.debug("SessionGuard: audit-trip subscription failed", exc_info=True)
+
         logger.debug("SessionGuard bound to tripwires")
+
+    def _on_audit_trip(self, classname, evidence):
+        """A C-level file touch tripped the loader audit hook (a path our
+        Python wrappers never saw, e.g. ctypes or a spawned process)."""
+        try:
+            loop = None
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = self._loop
+            if loop is None or loop.is_closed():
+                logger.warning("SessionGuard audit trip (no loop): %s", evidence)
+                return
+            filepath = _resolve_module_file(classname) if classname else None
+            loop.call_soon_threadsafe(
+                asyncio.ensure_future,
+                self._quarantine(
+                    classname or "unknown-external",
+                    filepath,
+                    f"audit-hook: {evidence}",
+                ),
+            )
+        except Exception:
+            logger.debug("SessionGuard: audit-trip handoff failed", exc_info=True)
 
     async def on_unload(self):
         # Core modules are not unloadable in practice; unbind anyway so a
