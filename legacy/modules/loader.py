@@ -1109,11 +1109,13 @@ class LoaderMod(loader.Module):
         _screen.keyboard(
             [
                 {
-                    "text": self.strings("clearmodules"),
+                    **_screen.key(
+                        self.strings("clearmodules"), "remove", "danger"
+                    ),
                     "callback": self._inline__clearmodules,
                 },
                 {
-                    "text": self.strings("cancel"),
+                    **_screen.key(self.strings("cancel"), "close"),
                     "action": "close",
                 },
             ]

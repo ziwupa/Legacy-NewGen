@@ -275,11 +275,13 @@ class CoreMod(loader.Module):
         _screen.keyboard(
             [
                 {
-                    "text": self.strings["cleardb_confirm"],
+                    **_screen.key(
+                        self.strings["cleardb_confirm"], "remove", "danger"
+                    ),
                     "callback": self._inline__cleardb,
                 },
                 {
-                    "text": self.strings["cancel"],
+                    **_screen.key(self.strings["cancel"], "close"),
                     "action": "close",
                 },
             ]

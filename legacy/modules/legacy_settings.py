@@ -157,10 +157,15 @@ class LegacySettingsMod(loader.Module):
         _screen.keyboard(
             [
                 {
-                    "text": self.strings("deauth_confirm_btn"),
+                    **_screen.key(
+                        self.strings("deauth_confirm_btn"), "remove", "danger"
+                    ),
                     "callback": self._uninstall_confirm_step_2,
                 },
-                {"text": self.strings("deauth_cancel"), "action": "close"},
+                {
+                    **_screen.key(self.strings("deauth_cancel"), "close"),
+                    "action": "close",
+                },
             ]
         )
         await self.inline.form("", message, rich_html=_screen)
@@ -708,11 +713,16 @@ class LegacySettingsMod(loader.Module):
                 _screen.keyboard(
                     [
                         {
-                            "text": self.strings("btn_yes"),
+                            **_screen.key(
+                                self.strings("btn_yes"), "check", "success"
+                            ),
                             "callback": self.weburl,
                             "args": (True,),
                         },
-                        {"text": self.strings("btn_no"), "action": "close"},
+                        {
+                            **_screen.key(self.strings("btn_no"), "close"),
+                            "action": "close",
+                        },
                     ]
                 )
                 if not await self.inline.form(

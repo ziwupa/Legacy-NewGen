@@ -490,8 +490,14 @@ class APIRatelimiterMod(loader.Module):
         _screen.add(_screen.icon("warning") + " " + self.strings("u_sure"))
         _screen.keyboard(
             [
-                {"text": self.strings("btn_no"), "action": "close"},
-                {"text": self.strings("btn_yes"), "callback": self._finish},
+                {
+                    **_screen.key(self.strings("btn_no"), "close"),
+                    "action": "close",
+                },
+                {
+                    **_screen.key(self.strings("btn_yes"), "check", "success"),
+                    "callback": self._finish,
+                },
             ]
         )
         await self.inline.form("", message, rich_html=_screen)

@@ -59,10 +59,15 @@ class UpdaterMod(loader.Module):
             _screen.keyboard(
                 [
                     {
-                        "text": self.strings("btn_restart"),
+                        **_screen.key(
+                            self.strings("btn_restart"), "check", "success"
+                        ),
                         "callback": self.inline_restart,
                     },
-                    {"text": self.strings("cancel"), "action": "close"},
+                    {
+                        **_screen.key(self.strings("cancel"), "close"),
+                        "action": "close",
+                    },
                 ]
             )
             if (
@@ -282,10 +287,15 @@ class UpdaterMod(loader.Module):
             _screen.keyboard(
                 [
                     {
-                        "text": self.strings("btn_update"),
+                        **_screen.key(
+                            self.strings("btn_update"), "check", "success"
+                        ),
                         "callback": self.inline_update,
                     },
-                    {"text": self.strings("cancel"), "action": "close"},
+                    {
+                        **_screen.key(self.strings("cancel"), "close"),
+                        "action": "close",
+                    },
                 ]
             )
             if (
@@ -382,14 +392,16 @@ class UpdaterMod(loader.Module):
                 *[
                     [
                         {
-                            "text": c.message.split("\n", 1)[0],
+                            **_screen.key(
+                                c.message.split("\n", 1)[0]
+                            ),
                             "callback": self._cb_rollback,
                             "args": [c.hexsha],
                         }
                     ]
                     for c in commits
                 ],
-                [{"text": self.strings("cancel"), "action": "close"}],
+                [{**_screen.key(self.strings("cancel"), "close"), "action": "close"}],
             )
             await self.inline.form("", message, rich_html=_screen)
             return

@@ -327,11 +327,16 @@ class TestMod(loader.Module):
                             "callback": self._inline_back,
                         },
                         {
-                            "text": self.strings("send_anyway"),
+                            **cfg.key(
+                                self.strings("send_anyway"), "check", "success"
+                            ),
                             "callback": self.logs,
                             "args": [True, lvl],
                         },
-                        {"text": self.strings("cancel"), "action": "close"},
+                        {
+                            **cfg.key(self.strings("cancel"), "close"),
+                            "action": "close",
+                        },
                     ]
                 )
                 if isinstance(message, Message):
