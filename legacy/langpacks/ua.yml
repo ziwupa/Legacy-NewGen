@@ -462,6 +462,14 @@ help:
 
 legacy_info:
   owner: "Власник"
+  title: "{} {} {}"
+  row_owner: "Власник"
+  row_branch: "Гілка"
+  row_prefix: "Префікс"
+  row_uptime: "Аптайм"
+  row_cpu: "ЦП"
+  row_ram: "ОЗП"
+  row_platform: "Платформа"
   version: "Версія"
   build: "Збірка"
   prefix: "Префікс"

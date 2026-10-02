@@ -5,6 +5,7 @@
 # 🔑 https://www.gnu.org/licenses/agpl-3.0.html
 
 import getpass
+import logging
 import platform as lib_platform
 
 import distro
@@ -14,6 +15,9 @@ from legacytl.types import InputMediaWebPage
 from legacytl.utils import get_display_name
 
 from .. import loader, utils, version
+
+
+logger = logging.getLogger(__name__)
 
 
 @loader.tds
@@ -43,6 +47,70 @@ class LegacyInfoMod(loader.Module):
                 validator=loader.validators.Boolean(),
             ),
         )
+
+    async def _collect_info(self, args: list, custom_prefix: str) -> dict:
+        try:
+            repo = git.Repo(search_parent_directories=True)
+            diff = repo.git.log([f"HEAD..origin/{version.branch}", "--oneline"])
+            upd = (
+                self.strings("update_required").format(custom_prefix)
+                if diff
+                else self.strings("up-to-date")
+            )
+        except Exception:
+            upd = ""
+
+        me = '<b><a href="tg://user?id={}">{}</a></b>'.format(
+            self._client.legacy_me.id,
+            utils.escape_html(get_display_name(self._client.legacy_me)),
+        )
+        return {
+            "me": me,
+            "build": utils.get_commit_url(),
+            "version": f"<i>{version.__version__}</i>",
+            "tlversion": f"<i>{legacytl.__version__}</i>",
+            "prefix": f"«<code>{utils.escape_html(custom_prefix)}</code>»",
+            "platform": utils.get_named_platform(),
+            "upd": upd,
+            "uptime": f"{utils.formatted_uptime()}",
+            "cpu": f"{await utils.get_cpu_usage_async()}%",
+            "ram": f"{utils.get_ram_usage()} MB",
+            "branch": version.branch,
+            "hostname": utils._apk_host_info().get("host", lib_platform.node()),
+            "user": getpass.getuser(),
+            "kernel": lib_platform.uname().release,
+            "os": distro.name(pretty=True),
+            "label": (
+                utils.get_platform_emoji()
+                if self._client.legacy_me.premium
+                else "🌙 <b>Legacy newgen</b>"
+            ),
+        }
+
+    def _render_screen(self, d: dict):
+        screen = self.inline.screen()
+        screen.add(
+            screen.icon("core")
+            + " "
+            + self.strings("title").format(d["label"], d["version"], d["build"])
+        )
+        screen.add(
+            screen.table(
+                [
+                    [self.strings("row_owner"), d["me"]],
+                    [
+                        self.strings("row_branch"),
+                        f"<code>{d['branch']}</code><br>{d['upd']}",
+                    ],
+                    [self.strings("row_prefix"), d["prefix"]],
+                    [self.strings("row_uptime"), f"<code>{d['uptime']}</code>"],
+                    [self.strings("row_cpu"), f"<code>{d['cpu']}</code>"],
+                    [self.strings("row_ram"), f"<code>{d['ram']}</code>"],
+                    [self.strings("row_platform"), d["platform"]],
+                ]
+            )
+        )
+        return screen
 
     async def _render_info(self, args: list, custom_prefix: str) -> str:
         try:
@@ -142,17 +210,46 @@ class LegacyInfoMod(loader.Module):
         args = utils.get_args(message)
         custom_prefix = self.get_prefix(message.sender_id)
         media = utils.normalize_banner_url(self.config["banner_url"])
-        if self.config["media_quote"]:
-            await utils.answer(
-                message,
-                await self._render_info(args, custom_prefix),
-                file=InputMediaWebPage(media, optional=True) if media else None,
-                invert_media=True,
-            )
-        else:
-            await utils.answer(
-                message, await self._render_info(args, custom_prefix), file=media
-            )
+        if self.config["custom_message"] and "-d" not in args:
+            if self.config["media_quote"]:
+                await utils.answer(
+                    message,
+                    await self._render_info(args, custom_prefix),
+                    file=InputMediaWebPage(media, optional=True) if media else None,
+                    invert_media=True,
+                )
+            else:
+                await utils.answer(
+                    message, await self._render_info(args, custom_prefix), file=media
+                )
+            return
+
+        d = await self._collect_info(args, custom_prefix)
+        screen = self._render_screen(d)
+        sent = False
+        if self.inline.init_complete:
+            try:
+                if media:
+                    sent = await self.inline.form(
+                        "", message, rich_html=screen, photo=media
+                    )
+                else:
+                    sent = await self.inline.form("", message, rich_html=screen)
+            except Exception:
+                logger.exception("Rich info failed, falling back to plain")
+                sent = False
+        if not sent:
+            if self.config["media_quote"]:
+                await utils.answer(
+                    message,
+                    await self._render_info(args, custom_prefix),
+                    file=InputMediaWebPage(media, optional=True) if media else None,
+                    invert_media=True,
+                )
+            else:
+                await utils.answer(
+                    message, await self._render_info(args, custom_prefix), file=media
+                )
 
     @loader.command()
     async def ubinfo(self, message):
