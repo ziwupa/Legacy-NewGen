@@ -52,20 +52,21 @@ class UpdaterMod(loader.Module):
     async def restart(self, message: Message):
         args = utils.get_args(message)
         try:
+            _screen = self.inline.screen()
+            _screen.add(self.strings["restart_confirm"])
+            _screen.keyboard(
+                [
+                    {
+                        "text": self.strings("btn_restart"),
+                        "callback": self.inline_restart,
+                    },
+                    {"text": self.strings("cancel"), "action": "close"},
+                ]
+            )
             if (
                 "-f" in args
                 or not self.inline.init_complete
-                or not await self.inline.form(
-                    message=message,
-                    text=self.strings["restart_confirm"],
-                    reply_markup=[
-                        {
-                            "text": self.strings("btn_restart"),
-                            "callback": self.inline_restart,
-                        },
-                        {"text": self.strings("cancel"), "action": "close"},
-                    ],
-                )
+                or not await self.inline.form("", message, rich_html=_screen)
             ):
                 raise
         except Exception:
@@ -264,26 +265,27 @@ class UpdaterMod(loader.Module):
             upcoming = next(
                 git.Repo().iter_commits(f"origin/{version.branch}", max_count=1)
             ).hexsha
+            _screen = self.inline.screen()
+            _screen.add(
+                self.strings("update_confirm").format(
+                    current, current[:8], upcoming, upcoming[:8]
+                )
+                if upcoming != current
+                else self.strings("no_update")
+            )
+            _screen.keyboard(
+                [
+                    {
+                        "text": self.strings("btn_update"),
+                        "callback": self.inline_update,
+                    },
+                    {"text": self.strings("cancel"), "action": "close"},
+                ]
+            )
             if (
                 "-f" in args
                 or not self.inline.init_complete
-                or not await self.inline.form(
-                    message=message,
-                    text=(
-                        self.strings("update_confirm").format(
-                            current, current[:8], upcoming, upcoming[:8]
-                        )
-                        if upcoming != current
-                        else self.strings("no_update")
-                    ),
-                    reply_markup=[
-                        {
-                            "text": self.strings("btn_update"),
-                            "callback": self.inline_update,
-                        },
-                        {"text": self.strings("cancel"), "action": "close"},
-                    ],
-                )
+                or not await self.inline.form("", message, rich_html=_screen)
             ):
                 raise
         except Exception:
@@ -364,10 +366,10 @@ class UpdaterMod(loader.Module):
             commits = self._get_recent_commits(4)
             commits.pop(0)
 
-            await self.inline.form(
-                text=self.strings("rollback_no_args"),
-                message=message,
-                reply_markup=[
+            _screen = self.inline.screen()
+            _screen.add(self.strings("rollback_no_args"))
+            _screen.keyboard(
+                *[
                     [
                         {
                             "text": c.message.split("\n", 1)[0],
@@ -376,9 +378,10 @@ class UpdaterMod(loader.Module):
                         }
                     ]
                     for c in commits
-                ]
-                + [[{"text": self.strings("cancel"), "action": "close"}]],
+                ],
+                [{"text": self.strings("cancel"), "action": "close"}],
             )
+            await self.inline.form("", message, rich_html=_screen)
             return
 
         res = self._rollback_to_commit(args)

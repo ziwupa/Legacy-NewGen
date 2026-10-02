@@ -461,47 +461,43 @@ class LegacySecurityMod(loader.Module):
             return
 
         if not args:
-            await self.inline.form(
-                self.strings("global"),
-                reply_markup=self._build_markup_global(),
-                message=message,
-                ttl=5 * 60,
-            )
+            _screen = self.inline.screen()
+            _screen.add(self.strings("global"))
+            _screen.keyboard(*self._build_markup_global())
+            await self.inline.form("", message, rich_html=_screen, ttl=5 * 60)
             return
 
-        await self.inline.form(
-            self.strings("permissions").format(
-                self.get_prefix(message.sender_id), args
-            ),
-            reply_markup=self._build_markup(self.allmodules.commands[args]),
-            message=message,
-            ttl=5 * 60,
+        _screen = self.inline.screen()
+        _screen.add(
+            self.strings("permissions").format(self.get_prefix(message.sender_id), args)
         )
+        _screen.keyboard(*self._build_markup(self.allmodules.commands[args]))
+        await self.inline.form("", message, rich_html=_screen, ttl=5 * 60)
 
     @loader.command()
     async def inlinesec(self, message: Message):
         if not (args := utils.get_args_raw(message).lower().strip()):
-            await self.inline.form(
-                self.strings("global"),
-                reply_markup=self._build_markup_global(True),
-                message=message,
-                ttl=5 * 60,
-            )
+            _screen = self.inline.screen()
+            _screen.add(self.strings("global"))
+            _screen.keyboard(*self._build_markup_global(True))
+            await self.inline.form("", message, rich_html=_screen, ttl=5 * 60)
             return
 
         if args not in self.allmodules.inline_handlers:
             await utils.answer(message, self.strings("no_command").format(args))
             return
 
-        await self.inline.form(
-            self.strings("permissions").format(f"@{self.inline.bot_username} ", args),
-            reply_markup=self._build_markup(
+        _screen = self.inline.screen()
+        _screen.add(
+            self.strings("permissions").format(f"@{self.inline.bot_username} ", args)
+        )
+        _screen.keyboard(
+            *self._build_markup(
                 self.allmodules.inline_handlers[args],
                 True,
-            ),
-            message=message,
-            ttl=5 * 60,
+            )
         )
+        await self.inline.form("", message, rich_html=_screen, ttl=5 * 60)
 
     async def _resolve_user(self, message: Message):
         if not (args := utils.get_args_raw(message)) and not (
@@ -545,15 +541,16 @@ class LegacySecurityMod(loader.Module):
             user = await self._client.get_entity(user, exp=0)
 
         if not confirmed:
-            await self.inline.form(
+            _screen = self.inline.screen()
+            _screen.add(
                 self.strings("warning").format(
                     user.id,
                     utils.escape_html(get_display_name(user)),
                     group,
-                ),
-                message=message,
-                ttl=10 * 60,
-                reply_markup=[
+                )
+            )
+            _screen.keyboard(
+                [
                     {
                         "text": self.strings("cancel"),
                         "action": "close",
@@ -563,8 +560,9 @@ class LegacySecurityMod(loader.Module):
                         "callback": self._add_to_group,
                         "args": (group, True, user.id),
                     },
-                ],
+                ]
             )
+            await self.inline.form("", message, rich_html=_screen, ttl=10 * 60)
             return
 
         if user.id not in getattr(self._client.dispatcher.security, group):
@@ -879,9 +877,9 @@ class LegacySecurityMod(loader.Module):
         duration = self._extract_time(args)
 
         if len(possible_rules) > 1:
-            await self.inline.form(
-                message=message,
-                text=self.strings("multiple_rules").format(
+            _screen = self.inline.screen()
+            _screen.add(
+                self.strings("multiple_rules").format(
                     "\n".join(
                         "🛡 <b>{}</b> <code>{}</code>".format(
                             self.strings(rule.split("/")[0]).capitalize(),
@@ -889,8 +887,10 @@ class LegacySecurityMod(loader.Module):
                         )
                         for rule in possible_rules
                     )
-                ),
-                reply_markup=utils.chunks(
+                )
+            )
+            _screen.keyboard(
+                *utils.chunks(
                     [
                         {
                             "text": "🛡 {} {}".format(
@@ -903,8 +903,9 @@ class LegacySecurityMod(loader.Module):
                         for rule in possible_rules
                     ],
                     3,
-                ),
+                )
             )
+            await self.inline.form("", message, rich_html=_screen)
             return
 
         await self._confirm(message, "chat", target, possible_rules[0], duration)
@@ -927,9 +928,9 @@ class LegacySecurityMod(loader.Module):
         duration = self._extract_time(args)
 
         if len(possible_rules) > 1:
-            await self.inline.form(
-                message=message,
-                text=self.strings("multiple_rules").format(
+            _screen = self.inline.screen()
+            _screen.add(
+                self.strings("multiple_rules").format(
                     "\n".join(
                         "🛡 <b>{}</b> <code>{}</code>".format(
                             self.strings(rule.split("/")[0]).capitalize(),
@@ -937,8 +938,10 @@ class LegacySecurityMod(loader.Module):
                         )
                         for rule in possible_rules
                     )
-                ),
-                reply_markup=utils.chunks(
+                )
+            )
+            _screen.keyboard(
+                *utils.chunks(
                     [
                         {
                             "text": "🛡 {} {}".format(
@@ -951,8 +954,9 @@ class LegacySecurityMod(loader.Module):
                         for rule in possible_rules
                     ],
                     3,
-                ),
+                )
             )
+            await self.inline.form("", message, rich_html=_screen)
             return
 
         await self._confirm(message, "sgroup", target, possible_rules[0], duration)
@@ -996,9 +1000,9 @@ class LegacySecurityMod(loader.Module):
             return
 
         if len(possible_rules) > 1:
-            await self.inline.form(
-                message=message,
-                text=self.strings("multiple_rules").format(
+            _screen = self.inline.screen()
+            _screen.add(
+                self.strings("multiple_rules").format(
                     "\n".join(
                         "🛡 <b>{}</b> <code>{}</code>".format(
                             self.strings(rule.split("/")[0]).capitalize(),
@@ -1006,8 +1010,10 @@ class LegacySecurityMod(loader.Module):
                         )
                         for rule in possible_rules
                     )
-                ),
-                reply_markup=utils.chunks(
+                )
+            )
+            _screen.keyboard(
+                *utils.chunks(
                     [
                         {
                             "text": "🛡 {} {}".format(
@@ -1020,8 +1026,9 @@ class LegacySecurityMod(loader.Module):
                         for rule in possible_rules
                     ],
                     3,
-                ),
+                )
             )
+            await self.inline.form("", message, rich_html=_screen)
             return
 
         await self._confirm(message, "user", target, possible_rules[0], duration)

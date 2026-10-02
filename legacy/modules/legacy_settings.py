@@ -152,17 +152,18 @@ class LegacySettingsMod(loader.Module):
 
     @loader.command()
     async def uninstall_legacy(self, message: Message):
-        await self.inline.form(
-            self.strings("deauth_confirm"),
-            message,
+        _screen = self.inline.screen()
+        _screen.add(self.strings("deauth_confirm"))
+        _screen.keyboard(
             [
                 {
                     "text": self.strings("deauth_confirm_btn"),
                     "callback": self._uninstall_confirm_step_2,
                 },
                 {"text": self.strings("deauth_cancel"), "action": "close"},
-            ],
+            ]
         )
+        await self.inline.form("", message, rich_html=_screen)
 
     @loader.command()
     async def watchers(self, message: Message):
@@ -679,11 +680,10 @@ class LegacySettingsMod(loader.Module):
 
     @loader.command()
     async def settings(self, message: Message):
-        await self.inline.form(
-            self.strings("inline_settings"),
-            message=message,
-            reply_markup=self._get_settings_markup(),
-        )
+        _screen = self.inline.screen()
+        _screen.add(self.strings("inline_settings"))
+        _screen.keyboard(*self._get_settings_markup())
+        await self.inline.form("", message, rich_html=_screen)
 
     @loader.command()
     async def weburl(self, message: Message, force: bool = False):
@@ -701,17 +701,24 @@ class LegacySettingsMod(loader.Module):
             and "force_insecure" not in message.raw_text.lower()
         ):
             try:
-                if not await self.inline.form(
-                    self.strings("privacy_leak_nowarn").format(self._client.tg_id),
-                    message=message,
-                    reply_markup=[
+                _screen = self.inline.screen()
+                _screen.add(
+                    self.strings("privacy_leak_nowarn").format(self._client.tg_id)
+                )
+                _screen.keyboard(
+                    [
                         {
                             "text": self.strings("btn_yes"),
                             "callback": self.weburl,
                             "args": (True,),
                         },
                         {"text": self.strings("btn_no"), "action": "close"},
-                    ],
+                    ]
+                )
+                if not await self.inline.form(
+                    "",
+                    message,
+                    rich_html=_screen,
                     photo="https://i.postimg.cc/vTyjzbtL/legacy-web-interface.png",
                 ):
                     raise Exception
@@ -748,10 +755,13 @@ class LegacySettingsMod(loader.Module):
                 photo=("https://i.postimg.cc/52yrpPLG/legacy-opening-tunnel.png"),
             )
         else:
+            _screen = self.inline.screen()
+            _screen.add(self.strings("opening_tunnel"))
+            _screen.keyboard([{"text": "🕔 Wait...", "data": "empty"}])
             form = await self.inline.form(
-                self.strings("opening_tunnel"),
-                message=message,
-                reply_markup={"text": "🕔 Wait...", "data": "empty"},
+                "",
+                message,
+                rich_html=_screen,
                 photo=("https://i.postimg.cc/52yrpPLG/legacy-opening-tunnel.png"),
             )
 

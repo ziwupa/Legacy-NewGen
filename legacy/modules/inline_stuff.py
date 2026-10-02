@@ -168,20 +168,23 @@ class InlineStuff(loader.Module):
 
         if not force:
             try:
-                if not await self.inline.form(
+                _screen = self.inline.screen()
+                _screen.add(
                     self.strings["privacy_leak_nowarn"].format(
                         f"{self.get_prefix(message.sender_id)}iauth -f"
-                    ),
-                    message=message,
-                    reply_markup=[
+                    )
+                )
+                _screen.keyboard(
+                    [
                         {
                             "text": self.strings["btn_yes"],
                             "callback": self.iauth,
                             "args": (True,),
                         },
                         {"text": self.strings["btn_no"], "action": "close"},
-                    ],
-                ):
+                    ]
+                )
+                if not await self.inline.form("", message, rich_html=_screen):
                     raise Exception
             except Exception:
                 await utils.answer(message, self.strings["privacy_leak"])

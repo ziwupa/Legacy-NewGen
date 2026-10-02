@@ -486,14 +486,15 @@ class APIRatelimiterMod(loader.Module):
 
     @loader.command()
     async def api_fw_protection(self, message: Message):
-        await self.inline.form(
-            message=message,
-            text=self.strings("u_sure"),
-            reply_markup=[
+        _screen = self.inline.screen()
+        _screen.add(self.strings("u_sure"))
+        _screen.keyboard(
+            [
                 {"text": self.strings("btn_no"), "action": "close"},
                 {"text": self.strings("btn_yes"), "callback": self._finish},
-            ],
+            ]
         )
+        await self.inline.form("", message, rich_html=_screen)
 
     async def _finish(self, call: InlineCall):
         state = self.get("disable_protection", True)

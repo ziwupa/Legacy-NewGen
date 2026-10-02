@@ -270,10 +270,10 @@ class CoreMod(loader.Module):
 
     @loader.command()
     async def cleardb(self, message: Message):
-        await self.inline.form(
-            self.strings["confirm_cleardb"],
-            message,
-            reply_markup=[
+        _screen = self.inline.screen()
+        _screen.add(self.strings["confirm_cleardb"])
+        _screen.keyboard(
+            [
                 {
                     "text": self.strings["cleardb_confirm"],
                     "callback": self._inline__cleardb,
@@ -282,8 +282,9 @@ class CoreMod(loader.Module):
                     "text": self.strings["cancel"],
                     "action": "close",
                 },
-            ],
+            ]
         )
+        await self.inline.form("", message, rich_html=_screen)
 
     async def _inline__cleardb(self, call: InlineCall):
         self._db.clear()

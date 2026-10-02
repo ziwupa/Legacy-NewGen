@@ -384,38 +384,37 @@ class LoaderMod(loader.Module):
                 await message.edit("")
                 message = await message.respond("🌙", reply_to=utils.get_topic(message))
 
-            if await self.inline.form(
-                self.strings("module_fs"),
-                message=message,
-                reply_markup=[
-                    [
-                        {
-                            "text": self.strings("save"),
-                            "callback": self._inline__load,
-                            "args": (doc, path_, "once"),
-                        },
-                        {
-                            "text": self.strings("no_save"),
-                            "callback": self._inline__load,
-                            "args": (doc, path_, "no"),
-                        },
-                    ],
-                    [
-                        {
-                            "text": self.strings("save_for_all"),
-                            "callback": self._inline__load,
-                            "args": (doc, path_, "all_yes"),
-                        }
-                    ],
-                    [
-                        {
-                            "text": self.strings("never_save"),
-                            "callback": self._inline__load,
-                            "args": (doc, path_, "all_no"),
-                        }
-                    ],
+            _screen = self.inline.screen()
+            _screen.add(self.strings("module_fs"))
+            _screen.keyboard(
+                [
+                    {
+                        "text": self.strings("save"),
+                        "callback": self._inline__load,
+                        "args": (doc, path_, "once"),
+                    },
+                    {
+                        "text": self.strings("no_save"),
+                        "callback": self._inline__load,
+                        "args": (doc, path_, "no"),
+                    },
                 ],
-            ):
+                [
+                    {
+                        "text": self.strings("save_for_all"),
+                        "callback": self._inline__load,
+                        "args": (doc, path_, "all_yes"),
+                    }
+                ],
+                [
+                    {
+                        "text": self.strings("never_save"),
+                        "callback": self._inline__load,
+                        "args": (doc, path_, "all_no"),
+                    }
+                ],
+            )
+            if await self.inline.form("", message, rich_html=_screen):
                 return
 
         if path_ is not None:
@@ -1105,10 +1104,10 @@ class LoaderMod(loader.Module):
 
     @loader.command()
     async def clearmodules(self, message: Message):
-        await self.inline.form(
-            self.strings("confirm_clearmodules"),
-            message,
-            reply_markup=[
+        _screen = self.inline.screen()
+        _screen.add(self.strings("confirm_clearmodules"))
+        _screen.keyboard(
+            [
                 {
                     "text": self.strings("clearmodules"),
                     "callback": self._inline__clearmodules,
@@ -1117,8 +1116,9 @@ class LoaderMod(loader.Module):
                     "text": self.strings("cancel"),
                     "action": "close",
                 },
-            ],
+            ]
         )
+        await self.inline.form("", message, rich_html=_screen)
 
     @loader.command()
     async def addrepo(self, message: Message):

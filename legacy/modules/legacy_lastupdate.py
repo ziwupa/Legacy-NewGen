@@ -275,9 +275,8 @@ class LegacyLastUpdateMod(loader.Module):
         info = await utils.run_sync(self._collect)
         text = self._render(info)
 
-        if not await self.inline.form(
-            text,
-            message=message,
-            reply_markup=self._markup(info),
-        ):
+        _screen = self.inline.screen()
+        _screen.add(text)
+        _screen.keyboard(*self._markup(info))
+        if not await self.inline.form("", message, rich_html=_screen):
             await utils.answer(message, text)

@@ -39,10 +39,10 @@ class Translations(loader.Module):
     @loader.command()
     async def setlang(self, message: Message):
         if not (args := utils.get_args_raw(message)):
-            await self.inline.form(
-                message=message,
-                text=self.strings("choose_language"),
-                reply_markup=utils.chunks(
+            _screen = self.inline.screen()
+            _screen.add(self.strings("choose_language"))
+            _screen.keyboard(
+                *utils.chunks(
                     [
                         {
                             "text": text,
@@ -52,8 +52,9 @@ class Translations(loader.Module):
                         for lang, text in translations.SUPPORTED_LANGUAGES.items()
                     ],
                     2,
-                ),
+                )
             )
+            await self.inline.form("", message, rich_html=_screen)
             return
 
         if any(len(i) != 2 and not utils.check_url(i) for i in args.split()):

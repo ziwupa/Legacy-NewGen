@@ -257,9 +257,10 @@ class TestMod(loader.Module):
 
         if not isinstance(lvl, int):
             try:
-                if not self.inline.init_complete or not await self.inline.form(
-                    text=self.strings("choose_loglevel"),
-                    reply_markup=utils.chunks(
+                _screen = self.inline.screen()
+                _screen.add(self.strings("choose_loglevel"))
+                _screen.keyboard(
+                    *utils.chunks(
                         [
                             {
                                 "text": name,
@@ -276,9 +277,11 @@ class TestMod(loader.Module):
                             ]
                         ],
                         2,
-                    )
-                    + [[{"text": self.strings("cancel"), "action": "close"}]],
-                    message=message,
+                    ),
+                    [[{"text": self.strings("cancel"), "action": "close"}]],
+                )
+                if not self.inline.init_complete or not await self.inline.form(
+                    "", message, rich_html=_screen
                 ):
                     raise
             except Exception:
@@ -315,9 +318,10 @@ class TestMod(loader.Module):
                 if not self.inline.init_complete:
                     raise
 
-                cfg = {
-                    "text": self.strings("confidential").format(named_lvl),
-                    "reply_markup": [
+                cfg = self.inline.screen()
+                cfg.add(self.strings("confidential").format(named_lvl))
+                cfg.keyboard(
+                    [
                         {
                             "text": self.lookup("LegacyConfig").strings["back_btn"],
                             "callback": self._inline_back,
@@ -328,13 +332,13 @@ class TestMod(loader.Module):
                             "args": [True, lvl],
                         },
                         {"text": self.strings("cancel"), "action": "close"},
-                    ],
-                }
+                    ]
+                )
                 if isinstance(message, Message):
-                    if not await self.inline.form(**cfg, message=message):
+                    if not await self.inline.form("", message, rich_html=cfg):
                         raise
                 else:
-                    await message.edit(**cfg)
+                    await message.edit(rich_html=cfg)
             except Exception:
                 await utils.answer(
                     message,
