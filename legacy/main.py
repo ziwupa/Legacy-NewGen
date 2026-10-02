@@ -57,7 +57,7 @@ from legacytl.network.connection import (
     ConnectionTcpMTProxyRandomizedIntermediate,
 )
 from legacytl.password import compute_check
-from legacytl.sessions import MemorySession, SQLiteSession
+from legacytl.sessions import BinarySession, MemorySession, SQLiteSession
 from legacytl.tl.functions.account import GetPasswordRequest
 from legacytl.tl.functions.auth import CheckPasswordRequest
 
@@ -91,6 +91,7 @@ LOGS_PATH = "https://raw.githubusercontent.com/ziwupa/Legacy-NewGen/refs/heads/b
 AVATAR_PATH = os.path.join(os.getcwd(), "assets", "legacy-pfp.png")
 CONFIG_PATH = BASE_PATH / "config.json"
 SESSIONS_DIR = os.path.join(BASE_DIR, "sessions")
+SESSION_KEY_FILE = os.path.join(BASE_DIR, "legacy.key")
 
 # fmt: off
 LATIN_MOCK = [
@@ -380,7 +381,7 @@ class Legacy:
     """Main userbot instance, which can handle multiple clients"""
 
     def __init__(self):
-        global BASE_DIR, BASE_PATH, CONFIG_PATH, SESSIONS_DIR
+        global BASE_DIR, BASE_PATH, CONFIG_PATH, SESSIONS_DIR, SESSION_KEY_FILE
         self.omit_log = False
         self.arguments = parse_arguments()
         if self.arguments.data_root:
@@ -388,6 +389,7 @@ class Legacy:
             BASE_PATH = Path(BASE_DIR)
             CONFIG_PATH = BASE_PATH / "config.json"
             SESSIONS_DIR = os.path.join(BASE_DIR, "sessions")
+            SESSION_KEY_FILE = os.path.join(BASE_DIR, "legacy.key")
         os.makedirs(SESSIONS_DIR, exist_ok=True)
         self._migrate_sessions()
         self.loop = asyncio.get_event_loop()
@@ -446,18 +448,68 @@ class Legacy:
             except OSError:
                 logging.exception("Failed to migrate session file %s", entry.path)
 
+        # The master key follows the data root as well.
+        with contextlib.suppress(OSError):
+            for entry in os.scandir(BASE_DIR):
+                if entry.is_file() and entry.name == "legacy.key":
+                    target = SESSION_KEY_FILE
+                    if os.path.abspath(entry.path) != os.path.abspath(target):
+                        if not os.path.exists(target):
+                            shutil.move(entry.path, target)
+                    break
+
+    def _open_session(self, stem: str):
+        """Open an encrypted session, migrating a legacy SQLite one once.
+
+        :param stem: session path without extension, inside SESSIONS_DIR.
+        """
+        encrypted = stem + BinarySession.EXTENSION
+        if os.path.isfile(encrypted):
+            return BinarySession(stem, key_file=SESSION_KEY_FILE)
+        legacy_path = stem + ".session"
+        session = BinarySession(stem, key_file=SESSION_KEY_FILE)
+        if os.path.isfile(legacy_path):
+            try:
+                session.copy_from(SQLiteSession(stem))
+                session.save()
+            except Exception:
+                logging.exception("Failed to migrate session %s", legacy_path)
+                return SQLiteSession(stem)
+            try:
+                os.rename(legacy_path, legacy_path + ".migrated")
+                logging.info("Migrated session %s to encrypted storage", legacy_path)
+            except OSError:
+                logging.exception("Failed to retire legacy session %s", legacy_path)
+        return session
+
     def _read_sessions(self):
         """Gets sessions from environment and data directory"""
         self.sessions = []
         with os.scandir(SESSIONS_DIR) as entries:
-            self.sessions += [
-                SQLiteSession(entry.path.rsplit(".session", maxsplit=1)[0])
-                for entry in entries
-                if entry.is_file()
-                and entry.name.startswith("legacy-")
-                and entry.name.endswith(".session")
-                and "-bot-" not in entry.name
-            ]
+            for entry in entries:
+                if not entry.is_file():
+                    continue
+                if "-bot-" in entry.name:
+                    continue
+                stem = None
+                if entry.name.startswith("legacy-") and entry.name.endswith(
+                    BinarySession.EXTENSION
+                ):
+                    stem = entry.path[: -len(BinarySession.EXTENSION)]
+                elif (
+                    entry.name.startswith("legacy-")
+                    and entry.name.endswith(".session")
+                ):
+                    stem = entry.path.rsplit(".session", maxsplit=1)[0]
+                if stem:
+                    try:
+                        self.sessions += [self._open_session(stem)]
+                    except Exception:
+                        # Missing/wrong key file must never take the whole
+                        # startup down — the session is simply skipped.
+                        logging.exception(
+                            "Unable to open session %s (key missing?)", stem
+                        )
 
     def _get_api_token(self):
         """Get API Token from disk or environment"""
@@ -542,11 +594,12 @@ class Legacy:
             client.tg_id = telegram_id
             client.legacy_me = me
 
-        session = SQLiteSession(
+        session = BinarySession(
             os.path.join(
                 SESSIONS_DIR,
                 f"legacy-{telegram_id}",
-            )
+            ),
+            key_file=SESSION_KEY_FILE,
         )
 
         session.set_dc(
@@ -556,6 +609,7 @@ class Legacy:
         )
 
         session.auth_key = client.session.auth_key
+        session.takeout_id = getattr(client.session, "takeout_id", None)
 
         session.save()
 

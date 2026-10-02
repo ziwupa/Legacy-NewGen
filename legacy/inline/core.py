@@ -29,7 +29,7 @@ from legacytl.errors.rpcerrorlist import (
     UserIsBlockedError,
     YouBlockedUserError,
 )
-from legacytl.sessions import SQLiteSession
+from legacytl.sessions import BinarySession
 from legacytl.tl.functions.contacts import UnblockRequest
 from legacytl.tl.functions.messages import (
     GetDialogFiltersRequest,
@@ -234,7 +234,13 @@ class InlineManager(
             if not entry.is_file() or not entry.name.startswith(prefix):
                 continue
 
-            if entry.name.split(".session", 1)[0] == keep_stem:
+            stem = entry.name
+            for ext in (".session", BinarySession.EXTENSION):
+                if stem.endswith(ext):
+                    stem = stem[: -len(ext)]
+                    break
+
+            if stem == keep_stem:
                 continue
 
             try:
@@ -272,7 +278,7 @@ class InlineManager(
         bot_uid = self._token.split(":", 1)[0]
         self._cleanup_stale_bot_sessions(bot_uid)
         self._bot_client = TelegramClient(
-            SQLiteSession(
+            main.legacy._open_session(
                 os.path.join(main.SESSIONS_DIR, f"legacy-{self._me}-bot-{bot_uid}")
             ),
             self._client.api_id,

