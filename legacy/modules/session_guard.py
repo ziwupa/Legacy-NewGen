@@ -25,8 +25,10 @@ _REAL_IO_OPEN = io.open
 _REAL_OS_OPEN = os.open
 _REAL_SQLITE_CONNECT = sqlite3.connect
 
-# External modules are compiled with a pseudo-filename, real core files never are.
-_BRACKETED_FILE = re.compile(r"^<file (.+)>$")
+# External modules are compiled with a pseudo-filename, real core files
+# never are. Both file-based (`<file ...>`, loaded from loaded_modules/) and
+# live-loaded (`<external ...>`, via .loadmod/.dlmod) origins count.
+_BRACKETED_FILE = re.compile(r"^<(?:file|external)\s+(.+)>$")
 
 # Filesystem fallback (tests, manually executed scripts).
 _EXTERNAL_FILE = re.compile(r"^(.+)_(\d+)\.py$")
