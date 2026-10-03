@@ -297,7 +297,7 @@ class Form(InlineUnit):
 
             if isinstance(rich_html, Screen):
                 screen = rich_html
-                if reply_markup is None:
+                if not reply_markup:
                     reply_markup = screen.markup
                 rich_source, rich_html = screen.source, screen.html()
             elif isinstance(rich_html, str):
